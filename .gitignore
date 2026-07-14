@@ -1,0 +1,14 @@
+# Dependencies
+node_modules/
+
+# Build output (web)
+dist/
+
+# Capacitor / Android build artifacts are handled by android/.gitignore
+# Do NOT exclude the android/ directory itself
+
+# Local env / editor files
+.DS_Store
+*.local
+.env
+.env.*

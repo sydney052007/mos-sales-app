@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">摩斯外賣銷售記錄</string>
+    <string name="title_activity_main">摩斯外賣銷售記錄</string>
+    <string name="package_name">com.sydney.mossales</string>
+    <string name="custom_url_scheme">com.sydney.mossales</string>
+</resources>
