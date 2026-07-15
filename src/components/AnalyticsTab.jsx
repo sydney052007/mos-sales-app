@@ -398,6 +398,95 @@ function StockVsSales({ history }) {
   )
 }
 
+// ── Stock Suggestion ──────────────────────────────────────────
+function computeStockSuggestions(history) {
+  const map = {}
+  for (const entry of history) {
+    const dow = parseDate(entry.date).getDay()
+    for (const item of entry.items) {
+      const sold = totalSoldItem(item)
+      if (!map[item.name]) {
+        map[item.name] = {
+          name: item.name,
+          type: item.type,
+          appearances: 0,
+          totalSold: 0,
+          dowData: Array.from({ length: 7 }, () => ({ count: 0, totalSold: 0 })),
+        }
+      }
+      const r = map[item.name]
+      r.appearances++
+      r.totalSold += sold
+      r.dowData[dow].count++
+      r.dowData[dow].totalSold += sold
+    }
+  }
+  return Object.values(map)
+    .map(r => ({ ...r, overallAvg: Math.round(r.totalSold / r.appearances) }))
+    .sort((a, b) => b.overallAvg - a.overallAvg)
+}
+
+function StockSuggestion({ history }) {
+  const todayDow = new Date().getDay()
+  const [activeDow, setActiveDow] = useState(todayDow)
+  const suggestions = computeStockSuggestions(history)
+
+  return (
+    <Section title="備貨建議">
+      {/* DOW selector */}
+      <div style={{ display: 'flex', gap: '5px', marginBottom: '14px', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+        {DOW.map((d, i) => {
+          const isToday = i === todayDow
+          const isActive = i === activeDow
+          return (
+            <button key={i} onClick={() => setActiveDow(i)} style={{
+              flex: '0 0 auto',
+              padding: '5px 10px', fontSize: '13px', borderRadius: '6px',
+              cursor: 'pointer', border: isToday ? '2px solid #c0392b' : '2px solid transparent',
+              background: isActive ? '#c0392b' : '#f0f0f0',
+              color: isActive ? '#fff' : isToday ? '#c0392b' : '#555',
+              fontWeight: isActive || isToday ? 'bold' : 'normal',
+            }}>
+              週{d}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Per-item suggestions */}
+      {suggestions.map((item, idx) => {
+        const dow = item.dowData[activeDow]
+        const hasDowData = dow.count >= 2
+        const suggestion = hasDowData
+          ? Math.round(dow.totalSold / dow.count)
+          : item.overallAvg
+        return (
+          <div key={item.name} style={{
+            borderBottom: idx < suggestions.length - 1 ? '1px solid #f5f5f5' : 'none',
+            paddingBottom: '10px', marginBottom: '10px',
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '14px', color: '#333' }}>{item.name}</span>
+              <span style={{ fontSize: '18px', fontWeight: 'bold', color: '#c0392b' }}>
+                {suggestion} 份
+              </span>
+            </div>
+            <div style={{ fontSize: '11px', color: hasDowData ? '#888' : '#bbb', marginTop: '3px' }}>
+              {hasDowData
+                ? `根據 ${dow.count} 個週${DOW[activeDow]} 資料`
+                : `週${DOW[activeDow]} 資料不足（${dow.count} 次），暫用整體平均（共 ${item.appearances} 天）`}
+            </div>
+          </div>
+        )
+      })}
+
+      <div style={{ fontSize: '11px', color: '#bbb', marginTop: '2px' }}>
+        點選星期可切換；紅框 = 今天；建議值僅供參考，需手動填入品項備貨欄
+      </div>
+    </Section>
+  )
+}
+
 // ── Day of Week Effect ────────────────────────────────────────
 function DayOfWeekEffect({ history }) {
   const groups = Array.from({ length: 7 }, () => [])
@@ -445,6 +534,7 @@ export default function AnalyticsTab({ onNavigateToDate }) {
           <ItemRanking history={history} />
           <StockVsSales history={history} />
           <DayOfWeekEffect history={history} />
+          <StockSuggestion history={history} />
         </>
       )}
     </div>
