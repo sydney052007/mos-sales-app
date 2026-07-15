@@ -9,7 +9,7 @@
 
 ## 目前狀態總覽（截至 2026-07-15）
 
-第 1、2、3 批均已完成。第 3 批待手機驗證。
+第 1、2、3 批均已完成。系統列安全距離修正已完成，待手機驗證。
 
 | 模組 | 狀態 |
 |------|------|
@@ -22,7 +22,8 @@
 | 分析頁籤（圖表/排行/備貨/星期效應） | ✅ 完成 |
 | 手動匯入歷史資料 | ✅ 完成 |
 | 分析頁點日期跳轉到編輯頁（第 3 批） | ✅ 完成（待手機驗證） |
-| APK 打包 + 安裝到 Samsung 手機 | ✅ 完成（第 3 批重新打包，3.95 MB） |
+| 系統列安全距離（safe-area-inset） | ✅ 完成（待手機驗證）|
+| APK 打包 + 安裝到 Samsung 手機 | ✅ 完成（3.97 MB，2026-07-15） |
 
 ---
 
@@ -225,6 +226,18 @@ favoritesToItems(favorites) → items（sold/comboSold/aLaCarteSold 全歸零）
 - [x] `App.jsx` 頁籤更新為 品項/分析/常用品項
 - [x] 瀏覽器測試：日期切換讀取 history 正確；今天新增/±1/即時存檔正常
 - [x] APK 重新打包（4.04 MB），已送手機測試
+
+### 系統列安全距離修正（已完成，待手機驗證）
+
+**問題**：Capacitor 7 + targetSdkVersion 35（Android 15）預設強制 edge-to-edge，
+WebView 延伸到狀態列與導覽列底下，但原本沒有處理安全距離，導致上方日期選擇
+區和下方清單最後幾項被系統 UI 遮住。
+
+- [x] `index.html`：viewport meta 加 `viewport-fit=cover`（讓 CSS 拿得到 safe-area-inset-*）
+- [x] `App.jsx` header：`paddingTop` 改為 `calc(env(safe-area-inset-top, 0px) + 14px)`，頂部內容不被狀態列遮住
+- [x] `App.jsx` 外層容器：加 `paddingBottom: env(safe-area-inset-bottom, 0px)`，捲到清單底部時不被導覽列遮住
+- [x] APK 重新打包（3.97 MB，2026-07-15）
+- [ ] 手機實測：上方日期選擇區、下方清單最後一項按鈕是否完整可見可點
 
 ### 架構調整第 3 批：分析頁點日期跳轉到編輯頁（已完成，待手機驗證）
 

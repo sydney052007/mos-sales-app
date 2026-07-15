@@ -20,11 +20,17 @@ function App() {
   }
 
   return (
-    <div style={{ maxWidth: '480px', margin: '0 auto', minHeight: '100vh', background: '#f5f5f5' }}>
+    <div style={{
+      maxWidth: '480px', margin: '0 auto', minHeight: '100vh', background: '#f5f5f5',
+      paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+    }}>
       <header style={{
         background: '#c0392b',
         color: '#fff',
-        padding: '14px 16px',
+        paddingTop: 'calc(env(safe-area-inset-top, 0px) + 14px)',
+        paddingBottom: '14px',
+        paddingLeft: '16px',
+        paddingRight: '16px',
         fontSize: '17px',
         fontWeight: 'bold',
       }}>
