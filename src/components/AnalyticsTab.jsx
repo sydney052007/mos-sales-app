@@ -453,16 +453,13 @@ function StockSuggestion({ history }) {
         })}
       </div>
 
-      {/* Per-item suggestions */}
-      {suggestions.map((item, idx) => {
+      {/* Per-item suggestions — only show items with >= 2 appearances for the selected DOW */}
+      {suggestions.filter(item => item.dowData[activeDow].count >= 2).map((item, idx, arr) => {
         const dow = item.dowData[activeDow]
-        const hasDowData = dow.count >= 2
-        const suggestion = hasDowData
-          ? Math.round(dow.totalSold / dow.count)
-          : item.overallAvg
+        const suggestion = Math.round(dow.totalSold / dow.count)
         return (
           <div key={item.name} style={{
-            borderBottom: idx < suggestions.length - 1 ? '1px solid #f5f5f5' : 'none',
+            borderBottom: idx < arr.length - 1 ? '1px solid #f5f5f5' : 'none',
             paddingBottom: '10px', marginBottom: '10px',
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -471,10 +468,8 @@ function StockSuggestion({ history }) {
                 {suggestion} 份
               </span>
             </div>
-            <div style={{ fontSize: '11px', color: hasDowData ? '#888' : '#bbb', marginTop: '3px' }}>
-              {hasDowData
-                ? `根據 ${dow.count} 個週${DOW[activeDow]} 資料`
-                : `週${DOW[activeDow]} 資料不足（${dow.count} 次），暫用整體平均（共 ${item.appearances} 天）`}
+            <div style={{ fontSize: '11px', color: '#888', marginTop: '3px' }}>
+              根據 {dow.count} 個週{DOW[activeDow]} 資料
             </div>
           </div>
         )
