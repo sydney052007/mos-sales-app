@@ -43,9 +43,10 @@
 
 ### 打包 / 交付
 - [x] 網頁版本可在瀏覽器測試通過（今天頁籤、昨天頁籤、換日邏輯已驗證）
-- [x] Capacitor 打包成功產出 .apk（android\app\build\outputs\apk\debug\app-debug.apk，3.92 MB）
+- [x] Capacitor 打包成功產出 .apk（android\app\build\outputs\apk\debug\app-debug.apk，4.03 MB）
 - [x] .apk 安裝到 Samsung 手機並可正常運作
 - [x] 建置/安裝步驟說明文件完成（docs/build-guide.md）
+- [x] 專案推上 GitHub：https://github.com/sydney052007/mos-sales-app（Private）
 
 ---
 
