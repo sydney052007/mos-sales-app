@@ -1,8 +1,23 @@
-import { useState } from 'react'
-import { useToday } from '../hooks/useToday'
+import { useState, useEffect, useRef } from 'react'
+import { useItems } from '../hooks/useItems'
 import { calcRemaining } from '../logic/itemUtils'
-import { getFavorites } from '../services/storage'
+import { getFavorites, getTodayString } from '../services/storage'
 import { QuickCreateModal } from './QuickCreateModal'
+
+// ── Date helpers ──────────────────────────────────────────────
+const DOW = ['日', '一', '二', '三', '四', '五', '六']
+
+function formatDate(dateStr) {
+  const d = new Date(dateStr + 'T12:00:00')
+  const [y, m, day] = dateStr.split('-')
+  return `${y}/${m}/${day}(${DOW[d.getDay()]})`
+}
+
+function offsetDate(dateStr, delta) {
+  const d = new Date(dateStr + 'T12:00:00')
+  d.setDate(d.getDate() + delta)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
 
 // ── Validation helpers ────────────────────────────────────────
 function validName(s) { return s.trim().length > 0 }
@@ -230,19 +245,18 @@ function Field({ label, value }) {
 }
 
 // ── RegularRow ────────────────────────────────────────────────
-function RegularRow({ item, today }) {
+function RegularRow({ item, ctrl }) {
   const [expanded, setExpanded] = useState(false)
   const [editing, setEditing] = useState(false)
   const rem = calcRemaining(item)
   const remColor = rem < 0 ? '#c0392b' : rem === 0 ? '#aaa' : '#27ae60'
 
   function handleDelete() {
-    if (window.confirm(`確定要刪除「${item.name}」？`)) today.remove(item.id)
+    if (window.confirm(`確定要刪除「${item.name}」？`)) ctrl.remove(item.id)
   }
 
   return (
     <div style={s.row}>
-      {/* Collapsed row — tap left area to expand */}
       <div style={s.rowMain} onClick={() => !editing && setExpanded(v => !v)}>
         <span style={s.badgeRegular}>一般</span>
         <div style={s.nameBlock}>
@@ -254,13 +268,12 @@ function RegularRow({ item, today }) {
           <span style={{ ...s.remValue, color: remColor }}>{rem}</span>
         </div>
         <div style={s.soldBlock} onClick={e => e.stopPropagation()}>
-          <button onClick={() => today.decSold(item.id)} style={s.minusBtn}>－</button>
+          <button onClick={() => ctrl.decSold(item.id)} style={s.minusBtn}>－</button>
           <span style={s.soldCount}>{item.sold}</span>
-          <button onClick={() => today.incSold(item.id)} style={s.plusBtn}>＋</button>
+          <button onClick={() => ctrl.incSold(item.id)} style={s.plusBtn}>＋</button>
         </div>
       </div>
 
-      {/* Expanded: details + edit/delete */}
       {expanded && (
         <div style={s.expandedArea}>
           {!editing ? (
@@ -272,16 +285,14 @@ function RegularRow({ item, today }) {
               </div>
               <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
                 <button onClick={() => setEditing(true)} style={s.actionBtn}>編輯</button>
-                <button
-                  onClick={handleDelete}
-                  style={{ ...s.actionBtn, color: '#c0392b', borderColor: '#e8b4b0' }}
-                >刪除</button>
+                <button onClick={handleDelete}
+                  style={{ ...s.actionBtn, color: '#c0392b', borderColor: '#e8b4b0' }}>刪除</button>
               </div>
             </>
           ) : (
             <EditForm
               item={item}
-              onSave={changes => { today.edit(item.id, changes); setEditing(false); setExpanded(false) }}
+              onSave={changes => { ctrl.edit(item.id, changes); setEditing(false); setExpanded(false) }}
               onCancel={() => setEditing(false)}
             />
           )}
@@ -292,7 +303,7 @@ function RegularRow({ item, today }) {
 }
 
 // ── DrinkRow ──────────────────────────────────────────────────
-function DrinkRow({ item, today }) {
+function DrinkRow({ item, ctrl }) {
   const [expanded, setExpanded] = useState(false)
   const [editing, setEditing] = useState(false)
   const rem = calcRemaining(item)
@@ -300,12 +311,11 @@ function DrinkRow({ item, today }) {
   const hasDualPrice = item.comboPrice != null && item.aLaCartePrice != null
 
   function handleDelete() {
-    if (window.confirm(`確定要刪除「${item.name}」？`)) today.remove(item.id)
+    if (window.confirm(`確定要刪除「${item.name}」？`)) ctrl.remove(item.id)
   }
 
   return (
     <div style={{ ...s.row, background: '#f5fbff', borderColor: '#b8d8f0' }}>
-      {/* Collapsed row */}
       <div style={s.rowMain} onClick={() => !editing && setExpanded(v => !v)}>
         <span style={s.badgeDrink}>飲料</span>
         <div style={s.nameBlock}>
@@ -324,27 +334,26 @@ function DrinkRow({ item, today }) {
           <div style={s.drinkButtons} onClick={e => e.stopPropagation()}>
             <div style={s.drinkBtnRow}>
               <span style={s.drinkLabel}>套</span>
-              <button onClick={() => today.decSold(item.id, 'comboSold')} style={s.minusBtn}>－</button>
+              <button onClick={() => ctrl.decSold(item.id, 'comboSold')} style={s.minusBtn}>－</button>
               <span style={s.soldCount}>{item.comboSold}</span>
-              <button onClick={() => today.incSold(item.id, 'comboSold')} style={s.plusBtn}>＋</button>
+              <button onClick={() => ctrl.incSold(item.id, 'comboSold')} style={s.plusBtn}>＋</button>
             </div>
             <div style={s.drinkBtnRow}>
               <span style={s.drinkLabel}>單</span>
-              <button onClick={() => today.decSold(item.id, 'aLaCarteSold')} style={s.minusBtn}>－</button>
+              <button onClick={() => ctrl.decSold(item.id, 'aLaCarteSold')} style={s.minusBtn}>－</button>
               <span style={s.soldCount}>{item.aLaCarteSold}</span>
-              <button onClick={() => today.incSold(item.id, 'aLaCarteSold')} style={s.plusBtn}>＋</button>
+              <button onClick={() => ctrl.incSold(item.id, 'aLaCarteSold')} style={s.plusBtn}>＋</button>
             </div>
           </div>
         ) : (
           <div style={s.soldBlock} onClick={e => e.stopPropagation()}>
-            <button onClick={() => today.decSold(item.id, 'comboSold')} style={s.minusBtn}>－</button>
+            <button onClick={() => ctrl.decSold(item.id, 'comboSold')} style={s.minusBtn}>－</button>
             <span style={s.soldCount}>{item.comboSold ?? 0}</span>
-            <button onClick={() => today.incSold(item.id, 'comboSold')} style={s.plusBtn}>＋</button>
+            <button onClick={() => ctrl.incSold(item.id, 'comboSold')} style={s.plusBtn}>＋</button>
           </div>
         )}
       </div>
 
-      {/* Expanded: details + edit/delete */}
       {expanded && (
         <div style={{ ...s.expandedArea, background: '#edf6ff', borderColor: '#c8e0f0' }}>
           {!editing ? (
@@ -368,16 +377,14 @@ function DrinkRow({ item, today }) {
               </div>
               <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
                 <button onClick={() => setEditing(true)} style={s.actionBtn}>編輯</button>
-                <button
-                  onClick={handleDelete}
-                  style={{ ...s.actionBtn, color: '#c0392b', borderColor: '#e8b4b0' }}
-                >刪除</button>
+                <button onClick={handleDelete}
+                  style={{ ...s.actionBtn, color: '#c0392b', borderColor: '#e8b4b0' }}>刪除</button>
               </div>
             </>
           ) : (
             <EditForm
               item={item}
-              onSave={changes => { today.edit(item.id, changes); setEditing(false); setExpanded(false) }}
+              onSave={changes => { ctrl.edit(item.id, changes); setEditing(false); setExpanded(false) }}
               onCancel={() => setEditing(false)}
             />
           )}
@@ -387,23 +394,70 @@ function DrinkRow({ item, today }) {
   )
 }
 
-// ── TodayTab ──────────────────────────────────────────────────
-export default function TodayTab() {
-  const today = useToday()
+// ── DateSelector ──────────────────────────────────────────────
+function DateSelector({ selectedDate, onChange }) {
+  const dateInputRef = useRef(null)
+  const isToday = selectedDate === getTodayString()
+
+  function openPicker() {
+    const el = dateInputRef.current
+    if (!el) return
+    try { el.showPicker() } catch { el.click() }
+  }
+
+  return (
+    <div style={s.dateSelectorBar}>
+      <button onClick={() => onChange(offsetDate(selectedDate, -1))} style={s.navBtn}>◀</button>
+
+      <div style={s.dateCenterBlock}>
+        <span style={s.dateText}>{formatDate(selectedDate)}</span>
+        {isToday && <span style={s.todayBadge}>今天</span>}
+        <button onClick={openPicker} style={s.calBtn} title="選擇日期">📅</button>
+        {/* Hidden date input — triggered programmatically by the calendar button */}
+        <input
+          ref={dateInputRef}
+          type="date"
+          value={selectedDate}
+          onChange={e => { if (e.target.value) onChange(e.target.value) }}
+          style={{
+            position: 'absolute', opacity: 0,
+            width: '1px', height: '1px', border: 'none',
+            pointerEvents: 'none',
+          }}
+        />
+      </div>
+
+      <button onClick={() => onChange(offsetDate(selectedDate, +1))} style={s.navBtn}>▶</button>
+    </div>
+  )
+}
+
+// ── ItemsTab ──────────────────────────────────────────────────
+export default function ItemsTab({ selectedDate, onDateChange }) {
+  const ctrl = useItems(selectedDate)
   const [showAdd, setShowAdd] = useState(false)
   const [showQuickCreate, setShowQuickCreate] = useState(false)
 
+  // Close add form when date changes so stale form doesn't linger.
+  useEffect(() => {
+    setShowAdd(false)
+    setShowQuickCreate(false)
+  }, [selectedDate])
+
+  function changeDate(newDate) {
+    onDateChange(newDate)
+  }
+
   function handleAdd(type, name, stock, ...prices) {
     if (type === 'regular') {
-      today.addRegular(name, stock, prices[0])
+      ctrl.addRegular(name, stock, prices[0])
     } else {
-      today.addDrink(name, stock, prices[0], prices[1])
+      ctrl.addDrink(name, stock, prices[0], prices[1])
     }
     setShowAdd(false)
   }
 
-  // Sort: remaining === 0 goes to the bottom; original order preserved within each group
-  const sorted = [...today.items].sort((a, b) => {
+  const sorted = [...ctrl.items].sort((a, b) => {
     const rA = calcRemaining(a), rB = calcRemaining(b)
     if (rA === 0 && rB !== 0) return 1
     if (rA !== 0 && rB === 0) return -1
@@ -411,87 +465,118 @@ export default function TodayTab() {
   })
 
   return (
-    <div style={{ padding: '12px' }}>
+    <div>
+      {/* Date selector — always visible at top */}
+      <DateSelector selectedDate={selectedDate} onChange={changeDate} />
 
-      {/* Top action buttons */}
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+      <div style={{ padding: '12px' }}>
+        {/* Action buttons */}
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+          <button
+            onClick={() => setShowAdd(v => !v)}
+            style={{
+              flex: 1, padding: '12px', fontSize: '15px', fontWeight: 'bold', cursor: 'pointer',
+              background: showAdd ? '#fdf2f2' : '#c0392b',
+              color: showAdd ? '#c0392b' : '#fff',
+              border: '2px solid #c0392b', borderRadius: '10px',
+            }}
+          >
+            {showAdd ? '✕ 取消新增' : '＋ 新增品項'}
+          </button>
+          <button
+            onClick={() => ctrl.applyFavorites()}
+            style={{
+              flex: 1, padding: '12px', fontSize: '15px', fontWeight: 'bold', cursor: 'pointer',
+              background: '#fff', color: '#c0392b',
+              border: '2px solid #c0392b', borderRadius: '10px',
+            }}
+          >
+            套用常用品項
+          </button>
+        </div>
         <button
-          onClick={() => setShowAdd(v => !v)}
+          onClick={() => setShowQuickCreate(true)}
           style={{
-            flex: 1, padding: '12px', fontSize: '15px', fontWeight: 'bold', cursor: 'pointer',
-            background: showAdd ? '#fdf2f2' : '#c0392b',
-            color: showAdd ? '#c0392b' : '#fff',
-            border: '2px solid #c0392b', borderRadius: '10px',
+            width: '100%', padding: '11px', fontSize: '14px', fontWeight: 'bold',
+            cursor: 'pointer', marginBottom: '12px',
+            background: '#fff', color: '#2c7a4b',
+            border: '2px solid #2c7a4b', borderRadius: '10px',
           }}
         >
-          {showAdd ? '✕ 取消新增' : '＋ 新增品項'}
+          ✎ 文字快速建立品項
         </button>
-        <button
-          onClick={() => today.applyFavorites()}
-          style={{
-            flex: 1, padding: '12px', fontSize: '15px', fontWeight: 'bold', cursor: 'pointer',
-            background: '#fff', color: '#c0392b',
-            border: '2px solid #c0392b', borderRadius: '10px',
-          }}
-        >
-          套用常用品項
-        </button>
-      </div>
-      <button
-        onClick={() => setShowQuickCreate(true)}
-        style={{
-          width: '100%', padding: '11px', fontSize: '14px', fontWeight: 'bold',
-          cursor: 'pointer', marginBottom: '12px',
-          background: '#fff', color: '#2c7a4b',
-          border: '2px solid #2c7a4b', borderRadius: '10px',
-        }}
-      >
-        ✎ 文字快速建立品項
-      </button>
 
-      {/* Add form */}
-      {showAdd && <AddItemForm onAdd={handleAdd} onCancel={() => setShowAdd(false)} />}
+        {/* Add form */}
+        {showAdd && <AddItemForm onAdd={handleAdd} onCancel={() => setShowAdd(false)} />}
 
-      {/* Quick-create modal */}
-      {showQuickCreate && (
-        <QuickCreateModal
-          favorites={getFavorites()}
-          todayItems={today.items}
-          onConfirm={(rows, conflictMode) => today.bulkApplyParsed(rows, conflictMode)}
-          onClose={() => setShowQuickCreate(false)}
-        />
-      )}
-
-      {/* Empty state */}
-      {today.items.length === 0 && !showAdd && (
-        <div style={{ textAlign: 'center', padding: '40px 16px', color: '#aaa' }}>
-          <div style={{ fontSize: '40px', marginBottom: '10px' }}>📋</div>
-          <div style={{ fontSize: '15px', color: '#999' }}>今天還沒有品項</div>
-        </div>
-      )}
-
-      {/* Item count */}
-      {today.items.length > 0 && (
-        <div style={{ fontSize: '13px', color: '#888', marginBottom: '8px' }}>
-          今天共 {today.items.length} 筆品項
-        </div>
-      )}
-
-      {/* Item list — single-column rows */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-        {sorted.map(item =>
-          item.type === 'drink'
-            ? <DrinkRow key={item.id} item={item} today={today} />
-            : <RegularRow key={item.id} item={item} today={today} />
+        {/* Quick-create modal */}
+        {showQuickCreate && (
+          <QuickCreateModal
+            favorites={getFavorites()}
+            todayItems={ctrl.items}
+            onConfirm={(rows, conflictMode) => ctrl.bulkApplyParsed(rows, conflictMode)}
+            onClose={() => setShowQuickCreate(false)}
+          />
         )}
-      </div>
 
+        {/* Empty state */}
+        {ctrl.items.length === 0 && !showAdd && (
+          <div style={{ textAlign: 'center', padding: '40px 16px', color: '#aaa' }}>
+            <div style={{ fontSize: '40px', marginBottom: '10px' }}>📋</div>
+            <div style={{ fontSize: '15px', color: '#999' }}>這天還沒有品項</div>
+          </div>
+        )}
+
+        {/* Item count */}
+        {ctrl.items.length > 0 && (
+          <div style={{ fontSize: '13px', color: '#888', marginBottom: '8px' }}>
+            共 {ctrl.items.length} 筆品項
+          </div>
+        )}
+
+        {/* Item list */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          {sorted.map(item =>
+            item.type === 'drink'
+              ? <DrinkRow key={item.id} item={item} ctrl={ctrl} />
+              : <RegularRow key={item.id} item={item} ctrl={ctrl} />
+          )}
+        </div>
+      </div>
     </div>
   )
 }
 
 // ── Styles ────────────────────────────────────────────────────
 const s = {
+  // Date selector
+  dateSelectorBar: {
+    display: 'flex', alignItems: 'center',
+    background: '#fff', padding: '8px 12px',
+    borderBottom: '1px solid #e0e0e0',
+  },
+  navBtn: {
+    width: '44px', height: '44px', fontSize: '16px',
+    border: '1px solid #ddd', borderRadius: '8px',
+    background: '#f8f8f8', cursor: 'pointer', flexShrink: 0,
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+  },
+  dateCenterBlock: {
+    flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+    gap: '6px', position: 'relative',
+  },
+  dateText: {
+    fontSize: '16px', fontWeight: 'bold', color: '#1a1a1a',
+  },
+  todayBadge: {
+    fontSize: '11px', color: '#fff', background: '#c0392b',
+    padding: '1px 7px', borderRadius: '4px', fontWeight: 'bold',
+  },
+  calBtn: {
+    fontSize: '20px', background: 'none', border: 'none',
+    cursor: 'pointer', padding: '4px', lineHeight: 1,
+  },
+  // Form
   formBox: {
     background: '#fafafa', border: '2px solid #c0392b',
     borderRadius: '12px', padding: '16px', marginBottom: '14px',
@@ -505,7 +590,7 @@ const s = {
     flex: 1, padding: '11px', fontSize: '15px', fontWeight: 'bold',
     background: '#c0392b', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer',
   },
-  // ── Row layout ──
+  // Row layout
   row: {
     background: '#fff', border: '1px solid #e0e0e0',
     borderRadius: '10px', overflow: 'hidden',
@@ -522,9 +607,7 @@ const s = {
     fontSize: '17px', fontWeight: 'bold', color: '#1a1a1a',
     overflowWrap: 'break-word',
   },
-  rowPrice: {
-    fontSize: '12px', color: '#888', marginTop: '1px',
-  },
+  rowPrice: { fontSize: '12px', color: '#888', marginTop: '1px' },
   remBlock: {
     display: 'flex', flexDirection: 'column', alignItems: 'center',
     flexShrink: 0, minWidth: '36px',
@@ -552,7 +635,7 @@ const s = {
     fontSize: '11px', fontWeight: 'bold', color: '#5b8fa8',
     width: '16px', flexShrink: 0, textAlign: 'center',
   },
-  // ── Expanded area ──
+  // Expanded area
   expandedArea: {
     borderTop: '1px solid #efefef', padding: '12px 14px', background: '#fafafa',
   },
@@ -563,7 +646,7 @@ const s = {
     padding: '6px 14px', fontSize: '13px', background: '#fff', color: '#444',
     border: '1px solid #ccc', borderRadius: '6px', cursor: 'pointer',
   },
-  // ── Shared ──
+  // Shared
   badgeRegular: {
     fontSize: '11px', fontWeight: 'bold', color: '#7a5c1e', background: '#fef3cd',
     padding: '2px 6px', borderRadius: '4px', flexShrink: 0,

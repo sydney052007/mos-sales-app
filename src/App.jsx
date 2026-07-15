@@ -1,18 +1,23 @@
 import { useState } from 'react'
-import TodayTab from './components/TodayTab'
-import YesterdayTab from './components/YesterdayTab'
+import { getTodayString } from './services/storage'
+import ItemsTab from './components/ItemsTab'
 import AnalyticsTab from './components/AnalyticsTab'
 import FavoritesTab from './components/FavoritesTab'
 
 const TABS = [
-  { key: 'today',     label: '今天' },
-  { key: 'yesterday', label: '昨天' },
+  { key: 'items',     label: '品項' },
   { key: 'analytics', label: '分析' },
   { key: 'favorites', label: '常用品項' },
 ]
 
 function App() {
-  const [activeTab, setActiveTab] = useState('today')
+  const [activeTab, setActiveTab] = useState('items')
+  const [selectedDate, setSelectedDate] = useState(() => getTodayString())
+
+  function navigateToDate(dateStr) {
+    setSelectedDate(dateStr)
+    setActiveTab('items')
+  }
 
   return (
     <div style={{ maxWidth: '480px', margin: '0 auto', minHeight: '100vh', background: '#f5f5f5' }}>
@@ -51,9 +56,8 @@ function App() {
         ))}
       </div>
 
-      {activeTab === 'today' && <TodayTab />}
-      {activeTab === 'yesterday' && <YesterdayTab />}
-      {activeTab === 'analytics' && <AnalyticsTab />}
+      {activeTab === 'items'     && <ItemsTab selectedDate={selectedDate} onDateChange={setSelectedDate} />}
+      {activeTab === 'analytics' && <AnalyticsTab onNavigateToDate={navigateToDate} />}
       {activeTab === 'favorites' && <FavoritesTab />}
     </div>
   )

@@ -1,79 +1,111 @@
 # PROGRESS.md
 
-給 Claude Code 用的進度 tracker。**每次開始工作前先讀這份**,了解目前
-系統長什麼樣子;每完成一個可獨立驗證的小任務後更新對應項目。
+給 Claude Code 用的進度 tracker。**每次開始工作前先讀這份**，了解目前
+系統長什麼樣子；每完成一個可獨立驗證的小任務後更新對應項目。
 
 規則見 `CLAUDE.md` 的「Tracker 使用規則」一節。
 
 ---
 
-## 目前狀態
+## 目前狀態總覽（截至 2026-07-15）
 
-### 骨架 / 環境
-- [x] React 專案骨架建立(Vite + React)
-- [x] Capacitor 專案初始化
+第 1、2、3 批均已完成。第 3 批待手機驗證。
 
-### storage service
-- [x] 讀寫本機儲存(今天 / 昨天 / 前天三份資料)
-- [x] 常用品項範本的獨立讀寫
-
-### 業務邏輯(純函式 / custom hook)
-- [x] 一般品項的新增/編輯/刪除/計算邏輯
-- [x] 飲料品項的新增/編輯/刪除/計算邏輯(套餐/單點分開計數)
-- [x] 換日判斷與資料輪替邏輯(今天→昨天→前天)
-- [x] 套用常用品項範本邏輯(整批複製、已售歸零)
-
-### 「今天」頁籤元件
-- [x] 品項列表渲染(一般品項)
-- [x] 品項列表渲染(飲料品項)
-- [x] 「+ 新增品項」表單元件（類型切換、欄位驗證、即時更新清單、storage 持久化）
-- [x] 「套用常用品項」按鈕與綁定
-- [x] +1 / -1 按鈕即時更新畫面與存檔（一般品項一組、飲料套餐/單點各一組，負數擋住，剩餘即時重算）
-- [x] 編輯備貨量/價格（inline 表單，含名稱/備貨/價格欄位，驗證同 4b）
-- [x] 刪除品項（confirm 確認後移除，reload 不復活）
-- [x] 收合列顯示價格（一般品項顯示 `$price`，飲料雙價格顯示 `套$x/單$y`，名稱下方小字）
-
-### 「昨天」頁籤元件
-- [x] 顯示昨天最終品項清單與銷售數字（唯讀，卡片樣式同今天，無任何操作按鈕）
-
-### 「管理常用品項」
-- [x] 範本清單顯示（第三個頁籤「常用品項」）
-- [x] 新增/編輯/刪除範本品項（含驗證、即時存檔、reload 後資料保留）
-- [x] 完整流程驗證：在常用品項新增範本 → 今天頁籤套用 → 備貨/價格帶入、已售歸零
-
-### 打包 / 交付
-- [x] 網頁版本可在瀏覽器測試通過（今天頁籤、昨天頁籤、換日邏輯已驗證）
-- [x] Capacitor 打包成功產出 .apk（android\app\build\outputs\apk\debug\app-debug.apk，4.03 MB）
-- [x] .apk 安裝到 Samsung 手機並可正常運作
-- [x] 建置/安裝步驟說明文件完成（docs/build-guide.md）
-- [x] 專案推上 GitHub：https://github.com/sydney052007/mos-sales-app（Private）
+| 模組 | 狀態 |
+|------|------|
+| 骨架 / Capacitor 初始化 | ✅ 完成 |
+| localStorage 讀寫（含換日） | ✅ 完成（已重構，見第 1 批） |
+| 品項業務邏輯純函式 | ✅ 完成 |
+| 文字快速建立品項（textParser） | ✅ 完成 |
+| 統一品項編輯頁（含日期選擇器） | ✅ 完成（第 2 批） |
+| 管理常用品項範本 | ✅ 完成 |
+| 分析頁籤（圖表/排行/備貨/星期效應） | ✅ 完成 |
+| 手動匯入歷史資料 | ✅ 完成 |
+| 分析頁點日期跳轉到編輯頁（第 3 批） | ✅ 完成（待手機驗證） |
+| APK 打包 + 安裝到 Samsung 手機 | ✅ 完成（第 3 批重新打包，3.95 MB） |
 
 ---
 
-## 檔案結構現況
+## App 整體架構現況（第 3 批完成後）
+
+### 導覽結構
+
+```
+App.jsx
+├── state: activeTab（'items' | 'analytics' | 'favorites'）
+├── state: selectedDate（YYYY-MM-DD，初始為裝置今日）
+├── fn: navigateToDate(dateStr) → 同時設 selectedDate + activeTab='items'
+├── 頁籤列（點擊切換 activeTab）
+├── <ItemsTab selectedDate onDateChange>   ← controlled，不持有自己的日期 state
+├── <AnalyticsTab onNavigateToDate>        ← 點長條或日期清單觸發 navigateToDate
+└── <FavoritesTab>
+```
+
+### 分析頁跳轉機制
+
+- `RevenueTrend` 的 SVG 長條圖：每個長條的整列（barWidth 寬 × 全高）都是可點擊區域
+  （透明 `<rect>` 鋪底），點擊後呼叫 `onNavigateToDate(date)`
+- `RevenueTrend` 下方附有日期清單（最近 30 天，最新在前，含日期+總營收，
+  max-height 180px 可捲動），提供手機手指點不準長條時的備用入口
+- `ItemRanking`、`StockVsSales`、`DayOfWeekEffect` 均為跨多天彙總統計，不加跳轉
+
+### 資料流
+
+```
+分析頁點日期
+  → App.navigateToDate(dateStr)
+    → setSelectedDate(dateStr)
+    → setActiveTab('items')
+      → ItemsTab 收到新 selectedDate prop
+        → useItems(selectedDate) 的 useEffect 重讀該日 history 品項
+          → 畫面立即顯示該天資料、可編輯
+```
+
+---
+
+## 目前的 localStorage 結構
+
+| key | 說明 |
+|-----|------|
+| `mos_today` | 當前操作中的品項陣列（裝置今日）；全欄位物件含 `id` |
+| `mos_history` | 永久歷史記錄陣列，每筆 `{ date, totalRevenue, items[] }`；`items` 為精簡格式（無 id，有 remaining/revenue） |
+| `mos_favorites` | 常用品項範本陣列，含 `defaultStock`/`defaultPrice`/`defaultComboPrice`/`defaultALaCartePrice` |
+| `mos_last_date` | 上次 App 開啟的日期字串（`YYYY-MM-DD`），換日判斷用 |
+| `mos_migration_v1` | `true` 表示一次性遷移已完成（舊制 yesterday/daybefore → history） |
+| ~~`mos_yesterday`~~ | **廢棄**，首次啟動時遷移後刪除 |
+| ~~`mos_daybefore`~~ | **廢棄**，首次啟動時遷移後刪除 |
+
+---
+
+## 目前的檔案結構
 
 ```
 mos-sales-app/
 ├── src/
 │   ├── services/
-│   │   └── storage.js        # localStorage 讀寫、換日邏輯
+│   │   └── storage.js           # 所有 localStorage 讀寫
 │   ├── logic/
-│   │   └── itemUtils.js      # 純函式：新增/編輯/刪除/adjustSold/calcRemaining/favoritesToItems
+│   │   ├── itemUtils.js         # 純函式：品項 CRUD / adjustSold / calcRemaining / favoritesToItems
+│   │   └── textParser.js        # 文字快速建立品項的解析引擎與模糊比對
 │   ├── hooks/
-│   │   ├── useToday.js           # custom hook：今天品項操作
-│   │   └── useFavorites.js       # custom hook：常用品項範本操作
+│   │   ├── useItems.js          # ★ 現役：日期感知品項操作 hook
+│   │   ├── useFavorites.js      # 常用品項範本操作 hook
+│   │   └── useToday.js          # 舊，App 不再 import，可刪除
 │   ├── components/
-│   │   ├── TodayTab.jsx          # 今天頁籤（可編輯）
-│   │   ├── YesterdayTab.jsx      # 昨天頁籤（唯讀）
-│   │   ├── AnalyticsTab.jsx      # 分析頁籤（歷史趨勢／排行／備貨分析／星期效應）
-│   │   ├── FavoritesTab.jsx      # 常用品項頁籤（新增/編輯/刪除範本）
-│   │   ├── StorageTest.jsx       # 暫時測試元件
-│   │   └── BusinessLogicTest.jsx # 暫時測試元件
+│   │   ├── ItemsTab.jsx         # ★ 現役：受控日期（selectedDate/onDateChange props）
+│   │   ├── AnalyticsTab.jsx     # 分析頁籤（含 onNavigateToDate 跳轉支援）
+│   │   ├── FavoritesTab.jsx     # 常用品項範本管理頁籤
+│   │   ├── QuickCreateModal.jsx # 文字快速建立品項 modal（多步驟）
+│   │   ├── TodayTab.jsx         # 舊，App 不再 import，可刪除
+│   │   ├── YesterdayTab.jsx     # 舊，App 不再 import，可刪除
+│   │   ├── StorageTest.jsx      # 舊測試元件，可刪除
+│   │   └── BusinessLogicTest.jsx # 舊測試元件，可刪除
 │   ├── main.jsx
-│   ├── App.jsx                   # 頁籤切換（今天/昨天/常用品項）
+│   ├── App.jsx                  # 頁籤切換 + selectedDate 提升 + navigateToDate
 │   └── index.css
 ├── docs/
-│   └── spec.md
+│   ├── spec.md
+│   └── build-guide.md           # 建置/安裝步驟說明
 ├── index.html
 ├── vite.config.js
 ├── capacitor.config.json
@@ -85,96 +117,143 @@ mos-sales-app/
 
 ---
 
-### 排版優化（單欄列表列設計）
+## 關鍵函式 / 元件速查
 
-- [x] 「今天」和「昨天」品項列表改為單欄列表列（row）設計，取代原本固定
-  兩欄 Grid，根本解決手機版內容超出畫面的問題
-  - 「今天」每列預設顯示：品項名稱（大字）、剩餘數量（大字）、±1 按鈕
-    （44×44px，飲料各有套餐/單點兩組），點名稱區塊展開備貨/價格/已售
-    明細及編輯/刪除按鈕；展開期間不可意外收合（editing 狀態保護）
-  - 剩餘 = 0 的品項自動排到列表最下方，仍顯示、不隱藏
-  - 「昨天」單欄緊湊列（padding 8px），唯讀，每列顯示名稱＋備/售/餘數字
-  - 飲料列有淡藍底色以區分；展開區也有對應底色
+### `src/services/storage.js`
 
-### 飲料品項價格選填優化
+| 函式 | 說明 |
+|------|------|
+| `getTodayString()` | 回傳裝置今日 `YYYY-MM-DD` |
+| `getTodayItems()` / `setTodayItems(items)` | 讀寫 `mos_today` |
+| `getItemsForDate(dateStr)` | 今日→`mos_today`；其他→從 history 找（加合成 id）；找不到→`[]` |
+| `setItemsForDate(dateStr, items)` | 今日→`mos_today`；其他→upsert history（重算 totalRevenue，依 date 排序） |
+| `getDailyHistory()` | 讀取完整 history 陣列 |
+| `importHistoryEntries(entries, overwrite)` | 批次合併進 history，回傳 `{ added, skipped, overwritten }` |
+| `getFavorites()` / `setFavorites(items)` | 讀寫常用品項範本 |
+| `initDefaults()` | 第一次啟動時植入預設 18 個常用品項範本 |
+| `runOnceMigration()` | 一次性遷移舊制 yesterday/daybefore → history（設 `mos_migration_v1` 旗標後不再執行） |
+| `checkAndRotate()` | 換日：若日期不同，把 `mos_today` append 進 history 後清空，更新 `mos_last_date` |
 
-- [x] 飲料新增/編輯表單預設只顯示一個「價格」欄位，旁邊有「＋ 加第二種價格」
-  展開後才顯示「套餐價」「單點價」兩個欄位，驗證擋住兩個都空白的情況
-- [x] `DrinkRow`（今天頁籤）：只有一個價格時顯示單組 ±1 計數，兩個價格才顯示
-  「套」「單」雙組計數，展開明細也依此切換顯示
-- [x] `DrinkRowRO`（昨天頁籤）：同上，單價品項只顯示一個「售」欄位
-- [x] `FavoritesTab`（常用品項）：新增/編輯範本、卡片顯示同步支援單/雙價格
-- [x] 資料層（`createDrinkItem`、`useFavorites.addDrink`）允許 null 價格；
-  `favoritesToItems` 保留 null 傳遞；`calcRemaining` 原本已用 `?? 0` 安全
-- [x] 既有兩個價格的品項（如紅茶）自動相容，不需使用者手動處理
+**啟動順序**（在 `useItems.js` 的 lazy useState 裡執行）：
+```
+initDefaults() → runOnceMigration() → checkAndRotate()
+```
+`runOnceMigration` 必須在 `checkAndRotate` 之前，才能讀到換日前的 `LAST_DATE`。
 
-### 歷史資料保留與分析頁籤
+### `src/hooks/useItems.js`
 
-- [x] `storage.js` 新增永久儲存 key `mos_history`，及 `getDailyHistory()` /
-  `appendDailyHistory(entry)` API
-- [x] 換日邏輯（`checkAndRotate`）調整：在搬移今天→昨天之前，若今天有品項，
-  先將完整品項資料轉換成「每日總覽」格式（含 date、totalRevenue、items 陣列，
-  每筆含 name/type/stock/sold或comboSold+aLaCarteSold/remaining/revenue），
-  append 進 dailyHistory；無品項則不記錄
-- [x] 新增「分析」頁籤（App.jsx 第三個頁籤，今天/昨天/分析/常用品項）
-- [x] 空資料狀態：`AnalyticsTab` 在 history 為空時顯示提示文字，不噴錯誤
-- [x] 每日營收趨勢：SVG 長條圖，近 30 天，顯示最高/平均值，可橫向捲動
-- [x] 品項銷售排行：依「總營收」或「銷售數量」切換排序，Top 10，含橫向進度條
-- [x] 備貨 vs 實際銷售：列出每品項的售完率、平均剩餘，標記「常賣完」(≥80%)/
-  「常剩很多」(售完率<50%)
-- [x] 星期幾效應：7 格長條圖（日一二三四五六），平均日營收，無資料的星期顯示
-  灰色短線
+接受 `selectedDate`（`YYYY-MM-DD`）參數，回傳：
+```js
+{ items, calcRemaining,
+  addRegular, addDrink, edit, remove,
+  incSold, decSold, applyFavorites, bulkApplyParsed }
+```
+- 第一次 render 時執行啟動序列（lazy useState）
+- `selectedDate` 變化時，`useEffect` 重讀對應日期的品項
+- 所有操作都呼叫 `setItemsForDate(selectedDate, newItems)` 即時存檔
 
-### 手動匯入歷史資料
+### `src/components/ItemsTab.jsx`
 
-- [x] `storage.js` 新增 `importHistoryEntries(entries, overwriteDuplicates)`：
-  以 date 為唯一 key 合併進 dailyHistory，依 date 排序後寫回，
-  回傳 `{ added, skipped, overwritten }` 計數
-- [x] 分析頁籤頂部新增「匯入歷史資料」按鈕，點選後展開輸入面板
-- [x] 輸入面板提供 textarea 讓使用者貼 JSON，顯示格式提示
-- [x] 格式驗證：非合法 JSON、非陣列、空陣列、缺 date/items 欄位或 date
-  格式錯誤，各顯示明確的中文錯誤訊息，不當機
-- [x] 重複日期處理：驗證通過後若有重複 date，整批列出讓使用者一次選擇
-  「覆蓋重複的日期」或「略過重複的日期」，沒有重複則直接匯入
-- [x] 匯入完成後顯示結果（已匯入 N 筆 / 覆蓋 N 筆 / 略過 N 筆重複），
-  圖表立即重新渲染（主元件改用 useState 持有 history，不需重整頁面）
-- [x] `aggregateItems` 修正：stock/remaining 為 null 時不累加（避免 NaN），
-  改以 `stockKnownCount` 追蹤有備貨資料的天數
-- [x] `StockVsSales` 分成兩段顯示：有備貨資料的品項正常計算售完率；
-  全無備貨資料的品項顯示「無備貨資料」標籤；有資料但部分天缺值則
-  在說明行補註「另 N 天無備貨資料」
+接受 `{ selectedDate, onDateChange }` props（第 3 批改為受控元件）。
 
-### 文字快速建立品項
+頂層結構：
+```jsx
+<DateSelector selectedDate onChange={changeDate} />
+<AddItemForm>   // 展開式新增表單
+<QuickCreateModal>  // 文字快速建立 modal
+<RegularRow item ctrl>  // 一般品項列（展開含 EditForm + 刪除）
+<DrinkRow item ctrl>    // 飲料品項列（單/雙價格自動切換）
+```
+- `DateSelector`：◀/▶ 箭頭逐日切換；📅 按鈕呼叫 `dateInputRef.current.showPicker()`（含 `click()` fallback）；今日顯示紅色「今天」badge
+- 日期變化時 `useEffect` 關閉 showAdd / showQuickCreate
+- 剩餘 = 0 的品項 sort 到最下方
 
-- [x] `src/logic/textParser.js` 新增純函式解析引擎與模糊比對邏輯：
-  - 分類標題（開頭 `-` 且無數字）自動忽略
-  - Combo 格式 `名稱A+B（L1/L2）` 拆成兩筆獨立品項
-  - 多品項斜線格式 `A/B/C-n1/n2/n3` 依序拆成多筆
-  - 範圍格式 `n1～n2` 取下限，含有無 dash 兩種寫法
-  - 簡單 `名稱-n` 與嵌入數字 `名稱n後綴` 格式
-  - 模糊比對常用品項：normalize（去括號/空格、蕃↔番）後計算 substring 重疊分數，門檻 0.4
-- [x] `src/components/QuickCreateModal.jsx` 新增多步驟 modal：
-  - Step 1：textarea 貼上備貨筆記 → 解析預覽
-  - Step 2：每筆解析結果顯示為可完整編輯的卡片（常用品項下拉自動帶入、類型切換、名稱/備貨量/價格皆可改、可刪除列）；未比對到的品項標示橘色「未比對到」並要求手動填入價格
-  - 建立前驗證（名稱/備貨量/價格不得空白），inline 錯誤訊息
-  - 同名品項衝突偵測：列出衝突名稱，讓使用者選「覆蓋備貨量」或「略過重複」
-- [x] `src/hooks/useToday.js` 新增 `bulkApplyParsed(rows, conflictMode)` 方法
-- [x] `src/components/TodayTab.jsx` 新增「✎ 文字快速建立品項」按鈕（綠色，位於兩個主按鈕下方），wire up modal
-- [x] 完整流程驗證：貼入含分類標題、Combo、範圍、多斜線格式的筆記 → 解析 19 筆 → 刪除未比對 3 筆 → 建立 16 筆 → 今天清單正確顯示
+### `src/components/AnalyticsTab.jsx`
 
-## 已知問題 / 待處理
+接受 `{ onNavigateToDate }` prop。
 
-(無)
+讀 `getDailyHistory()` 顯示：
+- `RevenueTrend`：SVG 長條圖（可點擊跳轉）+ 下方日期清單（可點擊跳轉）
+- `ItemRanking`：品項銷售排行 Top 10（跨日彙總，無跳轉）
+- `StockVsSales`：備貨 vs 實際銷售售完率（跨日彙總，無跳轉）
+- `DayOfWeekEffect`：星期幾平均營收（跨日彙總，無跳轉）
+- `ImportPanel`：JSON 貼上匯入歷史資料（驗證 + 重複日期處理）
+
+### `src/logic/itemUtils.js`
+
+```js
+createRegularItem(name, stock, price) → item（含 generateId()）
+createDrinkItem(name, stock, comboPrice, aLaCartePrice) → item
+editItem(items, id, changes) → newItems
+deleteItem(items, id) → newItems
+adjustSold(items, id, field, delta) → newItems（負數擋住）
+calcRemaining(item) → number
+favoritesToItems(favorites) → items（sold/comboSold/aLaCarteSold 全歸零）
+```
+
+---
+
+## 已完成功能詳細記錄
+
+### 基礎功能（第 1 批前已完成）
+
+- [x] 單欄列表列設計（手機版不溢出）；品項行預設顯示名稱/剩餘/±1，點擊展開備貨/價格/編輯/刪除
+- [x] 飲料單/雙價格選填（±1 按鈕數量隨之切換；`comboPrice`/`aLaCartePrice` 可為 null）
+- [x] 剩餘 = 0 的品項自動排到清單最下方
+- [x] 常用品項範本（新增/編輯/刪除，獨立於換日輪替）
+- [x] 套用常用品項（整批複製，已售歸零）
+- [x] 文字快速建立品項（textParser 支援多種格式；QuickCreateModal 多步驟編輯/衝突處理）
+- [x] 分析頁籤（趨勢圖/排行/備貨分析/星期效應）
+- [x] 手動匯入歷史資料（JSON 貼上，格式驗證，重複日期選覆蓋或略過）
+
+### 架構調整第 1 批：資料模型重構（已完成，手機驗證通過）
+
+**核心變化**：拿掉三天輪替，改成一份 current（`mos_today`）＋永久 `mos_history`。
+
+- [x] `checkAndRotate()` 換日時直接 append history（不再搬到 yesterday/daybefore）
+- [x] `runOnceMigration()` 一次性把舊制 yesterday/daybefore 轉進 history（重複日期跳過，設完成旗標）
+- [x] 移除 `setYesterdayItems`、`getDayBeforeItems`、`setDayBeforeItems` export
+- [x] 手機驗證：migration 正確運作，舊 key 清除，history 資料結構正確
+
+### 架構調整第 2 批：統一日期選擇品項編輯頁（已完成，手機 APK 已打包）
+
+**核心變化**：拿掉獨立的今天/昨天頁籤，合併成單一「品項」頁，頂部有日期選擇器。
+
+- [x] `getTodayString()`、`getItemsForDate()`、`setItemsForDate()` 新增至 storage.js
+- [x] `useItems(selectedDate)` 新 hook（啟動序列 + date 變化重讀）
+- [x] `ItemsTab.jsx`（DateSelector ◀/▶/📅 + 完整品項操作 UI，功能同原 TodayTab）
+- [x] `App.jsx` 頁籤更新為 品項/分析/常用品項
+- [x] 瀏覽器測試：日期切換讀取 history 正確；今天新增/±1/即時存檔正常
+- [x] APK 重新打包（4.04 MB），已送手機測試
+
+### 架構調整第 3 批：分析頁點日期跳轉到編輯頁（已完成，待手機驗證）
+
+**核心變化**：`selectedDate` 從 `ItemsTab` local state 提升到 `App.jsx`，
+讓分析頁可透過 callback 觸發跳轉。
+
+- [x] `App.jsx`：`selectedDate` state 提升 + `navigateToDate(dateStr)` 同時設日期與切頁籤
+- [x] `ItemsTab.jsx`：改為受控元件，接受 `{ selectedDate, onDateChange }` props
+- [x] `AnalyticsTab.jsx`：接受 `onNavigateToDate` prop
+- [x] `RevenueTrend`：長條圖每列加全高透明 `<rect>` 擴大觸控區；bars 帶 `date` 欄位
+- [x] `RevenueTrend`：長條圖下方附日期清單（最近 30 天，反序，可捲動），作為手機備用入口
+- [x] `ItemRanking`、`StockVsSales`、`DayOfWeekEffect`：跨日彙總，不加跳轉
+- [x] Vite build 通過（無編譯錯誤）
+- [x] APK 重新打包（3.95 MB，2026-07-15）
+- [ ] 手機實測：點分析頁長條/日期清單跳轉到對應日期是否順暢
+
+---
+
+## 已知可清理項目（非緊急）
+
+- [x] `[mos-debug]` console.log 移除（log 在 `useToday.js`，隨舊檔一起刪除）
+- [x] 舊檔案已刪除：`useToday.js`、`TodayTab.jsx`、`YesterdayTab.jsx`、`StorageTest.jsx`、`BusinessLogicTest.jsx`
+- [x] `storage.js` 的 `getYesterdayItems()` 函式（僅舊元件使用）一併移除
 
 ---
 
 ## 備註
 
-- 動畫效果非必要但允許,若加入請在此簡述加在哪裡、用什麼方式實作,
-  方便下個 session 知道現況。
-- `TodayTab.jsx` 的空清單狀態內有「種入測試品項（5 筆）」和「種入測試常用品項（2 筆）[測試用]」
-  兩個開發輔助按鈕（`seedTestData` / `seedTestFavorites`），常用品項 UI 已完成，
-  可在確認無需後一起移除。
-- 打包 APK 需先安裝 Android Studio（含 JDK + SDK），設定 JAVA_HOME / ANDROID_HOME
-  環境變數後，執行 `npm run cap:sync` + `cd android && .\gradlew.bat assembleDebug`
-  即可產出 APK。詳見 `docs/build-guide.md`。
+- 打包 APK：`npm run cap:sync` + `cd android && .\gradlew.bat assembleDebug`
+  → 產出 `android\app\build\outputs\apk\debug\app-debug.apk`。詳見 `docs/build-guide.md`。
+- GitHub：https://github.com/sydney052007/mos-sales-app（Private）
+- 動畫效果非必要但允許，若加入請在此補記位置與實作方式。

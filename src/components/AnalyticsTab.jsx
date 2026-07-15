@@ -69,7 +69,7 @@ function validateImportData(text) {
 }
 
 // ── SVG Bar Chart ─────────────────────────────────────────────
-function BarChart({ bars, barWidth = 40, chartH = 120, color = '#c0392b' }) {
+function BarChart({ bars, barWidth = 40, chartH = 120, color = '#c0392b', onBarClick }) {
   if (!bars.length) return null
   const max = Math.max(...bars.map(b => b.value), 1)
   // topPad reserves space above the tallest bar so value labels never get clipped
@@ -83,7 +83,12 @@ function BarChart({ bars, barWidth = 40, chartH = 120, color = '#c0392b' }) {
           const bh = b.value > 0 ? Math.max(3, Math.round((b.value / max) * chartH)) : 0
           const barTop = topPad + (chartH - bh)
           return (
-            <g key={i}>
+            <g key={i}
+              onClick={onBarClick ? () => onBarClick(b) : undefined}
+              style={{ cursor: onBarClick ? 'pointer' : 'default' }}
+            >
+              {/* Full-column transparent hit area for reliable touch targets */}
+              {onBarClick && <rect x={x} y={0} width={barWidth} height={svgH} fill="transparent" />}
               {b.value > 0 ? (
                 <>
                   <rect x={x + 3} y={barTop} width={barWidth - 6} height={bh} fill={color} rx={3} />
@@ -250,20 +255,44 @@ function ImportPanel({ onImported }) {
 }
 
 // ── Revenue Trend ─────────────────────────────────────────────
-function RevenueTrend({ history }) {
+function RevenueTrend({ history, onNavigateToDate }) {
   const recent = history.slice(-30)
-  const bars = recent.map(e => ({ label: formatMD(e.date), value: e.totalRevenue }))
+  const bars = recent.map(e => ({ label: formatMD(e.date), value: e.totalRevenue, date: e.date }))
   const total = recent.reduce((s, e) => s + e.totalRevenue, 0)
   const max = Math.max(...recent.map(e => e.totalRevenue))
   const avg = Math.round(total / recent.length)
   return (
     <Section title="每日營收趨勢">
-      <BarChart bars={bars} barWidth={40} chartH={120} />
+      <BarChart bars={bars} barWidth={40} chartH={120}
+        onBarClick={onNavigateToDate ? b => onNavigateToDate(b.date) : undefined} />
       <div style={{ fontSize: '12px', color: '#999', marginTop: '8px', display: 'flex', gap: '14px' }}>
         <span>近 {recent.length} 天</span>
         <span>最高 ${max}</span>
         <span>平均 ${avg}</span>
       </div>
+      {onNavigateToDate && (
+        <div style={{ marginTop: '10px', borderTop: '1px solid #f0f0f0', paddingTop: '8px' }}>
+          <div style={{ fontSize: '11px', color: '#bbb', marginBottom: '4px' }}>
+            點長條或下方日期可前往編輯
+          </div>
+          <div style={{ maxHeight: '180px', overflowY: 'auto' }}>
+            {[...recent].reverse().map((e, i) => (
+              <div key={e.date} onClick={() => onNavigateToDate(e.date)}
+                style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  padding: '8px 6px', cursor: 'pointer',
+                  borderBottom: i < recent.length - 1 ? '1px solid #f5f5f5' : 'none',
+                }}
+              >
+                <span style={{ fontSize: '13px', color: '#444' }}>{e.date}</span>
+                <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#c0392b' }}>
+                  ${e.totalRevenue}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </Section>
   )
 }
@@ -390,7 +419,7 @@ function DayOfWeekEffect({ history }) {
 }
 
 // ── Main ──────────────────────────────────────────────────────
-export default function AnalyticsTab() {
+export default function AnalyticsTab({ onNavigateToDate }) {
   const [history, setHistory] = useState(() => getDailyHistory())
 
   function refreshHistory() {
@@ -412,7 +441,7 @@ export default function AnalyticsTab() {
         </div>
       ) : (
         <>
-          <RevenueTrend history={history} />
+          <RevenueTrend history={history} onNavigateToDate={onNavigateToDate} />
           <ItemRanking history={history} />
           <StockVsSales history={history} />
           <DayOfWeekEffect history={history} />

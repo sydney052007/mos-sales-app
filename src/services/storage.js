@@ -1,10 +1,12 @@
 const KEYS = {
-  TODAY: 'mos_today',
-  YESTERDAY: 'mos_yesterday',
-  DAY_BEFORE: 'mos_daybefore',
+  TODAY: 'mos_today',         // "current working" items (concept: active day, not literally "today")
   FAVORITES: 'mos_favorites',
   LAST_DATE: 'mos_last_date',
   HISTORY: 'mos_history',
+  MIGRATION_V1: 'mos_migration_v1', // flag: one-time legacy data migration completed
+  // Legacy keys — only read inside runOnceMigration(), cleared afterward
+  LEGACY_YESTERDAY: 'mos_yesterday',
+  LEGACY_DAY_BEFORE: 'mos_daybefore',
 }
 
 function read(key) {
@@ -29,7 +31,7 @@ export function generateId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2)
 }
 
-// --- Daily items (today / yesterday / day-before) ---
+// --- Daily items (current working day) ---
 
 export function getTodayItems() {
   return read(KEYS.TODAY) ?? []
@@ -37,22 +39,6 @@ export function getTodayItems() {
 
 export function setTodayItems(items) {
   write(KEYS.TODAY, items)
-}
-
-export function getYesterdayItems() {
-  return read(KEYS.YESTERDAY) ?? []
-}
-
-export function setYesterdayItems(items) {
-  write(KEYS.YESTERDAY, items)
-}
-
-export function getDayBeforeItems() {
-  return read(KEYS.DAY_BEFORE) ?? []
-}
-
-export function setDayBeforeItems(items) {
-  write(KEYS.DAY_BEFORE, items)
 }
 
 // --- Daily history (permanent; append-only) ---
@@ -133,6 +119,41 @@ export function importHistoryEntries(entries, overwriteDuplicates) {
   return { added, skipped, overwritten }
 }
 
+// Export today's date string for UI date comparisons.
+export function getTodayString() {
+  return todayString()
+}
+
+// Read items for any date.
+// Today → mos_today (full item objects with real ids).
+// Other date → find in dailyHistory (add synthetic ids for React key compat); [] if not found.
+export function getItemsForDate(dateStr) {
+  if (dateStr === todayString()) return getTodayItems()
+  const history = getDailyHistory()
+  const entry = history.find(e => e.date === dateStr)
+  if (!entry) return []
+  return (entry.items ?? []).map((item, i) => ({ ...item, id: `hist-${dateStr}-${i}` }))
+}
+
+// Write items for any date and persist immediately.
+// Today → mos_today.  Other date → upsert into dailyHistory with recalculated revenue.
+export function setItemsForDate(dateStr, items) {
+  if (dateStr === todayString()) {
+    setTodayItems(items)
+    return
+  }
+  const summary = buildDailySummary(items, dateStr)
+  const history = getDailyHistory()
+  const idx = history.findIndex(e => e.date === dateStr)
+  if (idx >= 0) {
+    history[idx] = summary
+  } else {
+    history.push(summary)
+    history.sort((a, b) => a.date.localeCompare(b.date))
+  }
+  write(KEYS.HISTORY, history)
+}
+
 // --- Favorites (independent of daily rotation) ---
 
 export function getFavorites() {
@@ -172,8 +193,48 @@ export function initDefaults() {
   write(KEYS.FAVORITES, DEFAULT_FAVORITES)
 }
 
+// Computes a date string offset by `days` from a base YYYY-MM-DD string.
+function offsetDateString(baseStr, days) {
+  const d = new Date(baseStr + 'T12:00:00') // noon avoids DST edge cases
+  d.setDate(d.getDate() + days)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+// One-time migration: converts legacy mos_yesterday / mos_daybefore into dailyHistory
+// entries, then clears those keys. Safe to call on every startup — skips if already done.
+// Must be called BEFORE checkAndRotate so LAST_DATE still reflects the previous session.
+export function runOnceMigration() {
+  if (read(KEYS.MIGRATION_V1)) return
+
+  const lastDate = read(KEYS.LAST_DATE)
+
+  if (lastDate !== null) {
+    const legacyYesterday = read(KEYS.LEGACY_YESTERDAY) ?? []
+    const legacyDayBefore = read(KEYS.LEGACY_DAY_BEFORE) ?? []
+    const toMigrate = []
+
+    if (legacyYesterday.length > 0) {
+      toMigrate.push(buildDailySummary(legacyYesterday, offsetDateString(lastDate, -1)))
+    }
+    if (legacyDayBefore.length > 0) {
+      toMigrate.push(buildDailySummary(legacyDayBefore, offsetDateString(lastDate, -2)))
+    }
+
+    // importHistoryEntries with overwriteDuplicates=false: existing dates are skipped.
+    if (toMigrate.length > 0) {
+      importHistoryEntries(toMigrate, false)
+    }
+  }
+
+  // Remove old keys regardless of whether there was data.
+  localStorage.removeItem(KEYS.LEGACY_YESTERDAY)
+  localStorage.removeItem(KEYS.LEGACY_DAY_BEFORE)
+
+  write(KEYS.MIGRATION_V1, true)
+}
+
 // --- Day rotation ---
-// Call once on app startup. Returns true if rotation happened.
+// Call once on app startup (after runOnceMigration). Returns true if rotation happened.
 export function checkAndRotate() {
   const today = todayString()
   const lastDate = read(KEYS.LAST_DATE)
@@ -182,12 +243,10 @@ export function checkAndRotate() {
 
   // lastDate is null means first launch — just stamp the date, no rotation.
   if (lastDate !== null) {
-    const todayItems = getTodayItems()
-    if (todayItems.length > 0) {
-      appendDailyHistory(buildDailySummary(todayItems, lastDate))
+    const currentItems = getTodayItems()
+    if (currentItems.length > 0) {
+      appendDailyHistory(buildDailySummary(currentItems, lastDate))
     }
-    setDayBeforeItems(getYesterdayItems())
-    setYesterdayItems(todayItems)
     setTodayItems([])
   }
 
