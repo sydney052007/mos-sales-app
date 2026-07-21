@@ -1,6 +1,7 @@
 const KEYS = {
   TODAY: 'mos_today',         // "current working" items (concept: active day, not literally "today")
   FAVORITES: 'mos_favorites',
+  KNOWN_ITEMS: 'mos_known_items',
   LAST_DATE: 'mos_last_date',
   HISTORY: 'mos_history',
   MIGRATION_V1: 'mos_migration_v1', // flag: one-time legacy data migration completed
@@ -70,6 +71,7 @@ function buildDailySummary(items, dateStr) {
         comboSold: item.comboSold ?? 0,
         aLaCarteSold: item.aLaCarteSold ?? 0,
         remaining, revenue,
+        soldOutOrder: item.soldOutOrder ?? null,
       }
     }
     return {
@@ -77,6 +79,7 @@ function buildDailySummary(items, dateStr) {
       price: item.price ?? 0,
       sold: item.sold ?? 0,
       remaining, revenue,
+      soldOutOrder: item.soldOutOrder ?? null,
     }
   })
   return {
@@ -162,6 +165,22 @@ export function getFavorites() {
 
 export function setFavorites(items) {
   write(KEYS.FAVORITES, items)
+}
+
+// --- Known items (auto-remembered; every item ever added, independent of Favorites) ---
+
+export function getKnownItems() {
+  return read(KEYS.KNOWN_ITEMS) ?? []
+}
+
+// name 相同就更新既有記錄（保持「最近一次」的類型與價格），否則新增一筆。
+// 只存 name / type / price(s)，不存備貨量。
+export function upsertKnownItem(entry) {
+  const items = getKnownItems()
+  const idx = items.findIndex(i => i.name === entry.name)
+  if (idx >= 0) items[idx] = { ...items[idx], ...entry }
+  else items.push(entry)
+  write(KEYS.KNOWN_ITEMS, items)
 }
 
 // --- Default favorites (seeded on first launch if storage is empty) ---

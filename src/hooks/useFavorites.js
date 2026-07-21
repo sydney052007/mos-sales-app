@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { getFavorites, setFavorites, generateId } from '../services/storage'
+import { getFavorites, setFavorites, generateId, upsertKnownItem } from '../services/storage'
 
 export function useFavorites() {
   const [favorites, setLocal] = useState(() => getFavorites())
@@ -17,17 +17,21 @@ export function useFavorites() {
       defaultStock: Number(defaultStock),
       defaultPrice: Number(defaultPrice),
     }])
+    upsertKnownItem({ name, type: 'regular', price: Number(defaultPrice) })
   }
 
   function addDrink(name, defaultStock, defaultComboPrice, defaultALaCartePrice) {
+    const comboPrice = defaultComboPrice != null ? Number(defaultComboPrice) : null
+    const aLaCartePrice = defaultALaCartePrice != null ? Number(defaultALaCartePrice) : null
     persist([...favorites, {
       id: generateId(),
       type: 'drink',
       name,
       defaultStock: Number(defaultStock),
-      defaultComboPrice: defaultComboPrice != null ? Number(defaultComboPrice) : null,
-      defaultALaCartePrice: defaultALaCartePrice != null ? Number(defaultALaCartePrice) : null,
+      defaultComboPrice: comboPrice,
+      defaultALaCartePrice: aLaCartePrice,
     }])
+    upsertKnownItem({ name, type: 'drink', comboPrice, aLaCartePrice })
   }
 
   function edit(id, changes) {

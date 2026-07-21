@@ -4,22 +4,43 @@ import { parseText } from '../logic/textParser'
 // ── PreviewRow ────────────────────────────────────────────────────────────────
 // One editable card per parsed item. All fields can be changed before confirming.
 
-function PreviewRow({ row, favorites, onChange, onRemove }) {
+function PreviewRow({ row, favorites, knownItems, onChange, onRemove }) {
   const isDrink = row.type === 'drink'
 
-  function handleFavSelect(e) {
-    const fav = favorites.find(f => f.id === e.target.value)
-    if (!fav) return
-    onChange({
-      type:           fav.type,
-      name:           fav.name,
-      price:          fav.defaultPrice          != null ? String(fav.defaultPrice)          : '',
-      comboPrice:     fav.defaultComboPrice     != null ? String(fav.defaultComboPrice)     : '',
-      aLaCartePrice:  fav.defaultALaCartePrice  != null ? String(fav.defaultALaCartePrice)  : '',
-      showSecondPrice: fav.type === 'drink' && fav.defaultALaCartePrice != null,
-    })
+  const favNames = new Set(favorites.map(f => f.name))
+  const otherKnown = knownItems.filter(k => !favNames.has(k.name))
+
+  function handlePick(e) {
+    const val = e.target.value
     // Reset select to placeholder so it's clear it's an action trigger
     e.target.value = ''
+    if (!val) return
+    const sep = val.indexOf(':')
+    const kind = val.slice(0, sep), key = val.slice(sep + 1)
+
+    if (kind === 'fav') {
+      const fav = favorites.find(f => f.id === key)
+      if (!fav) return
+      onChange({
+        type:           fav.type,
+        name:           fav.name,
+        price:          fav.defaultPrice          != null ? String(fav.defaultPrice)          : '',
+        comboPrice:     fav.defaultComboPrice     != null ? String(fav.defaultComboPrice)     : '',
+        aLaCartePrice:  fav.defaultALaCartePrice  != null ? String(fav.defaultALaCartePrice)  : '',
+        showSecondPrice: fav.type === 'drink' && fav.defaultALaCartePrice != null,
+      })
+    } else if (kind === 'known') {
+      const known = knownItems.find(k => k.name === key)
+      if (!known) return
+      onChange({
+        type:           known.type,
+        name:           known.name,
+        price:          known.price          != null ? String(known.price)          : '',
+        comboPrice:     known.comboPrice     != null ? String(known.comboPrice)     : '',
+        aLaCartePrice:  known.aLaCartePrice  != null ? String(known.aLaCartePrice)  : '',
+        showSecondPrice: known.type === 'drink' && known.aLaCartePrice != null,
+      })
+    }
   }
 
   function switchType(val) {
@@ -39,12 +60,15 @@ function PreviewRow({ row, favorites, onChange, onRemove }) {
         <button onClick={onRemove} style={rs.deleteBtn}>刪除</button>
       </div>
 
-      {/* Favorites picker (action trigger only) */}
-      <select defaultValue="" onChange={handleFavSelect} style={rs.select}>
-        <option value="" disabled>── 從常用品項選（自動帶入）──</option>
-        {favorites.map(f => (
-          <option key={f.id} value={f.id}>{f.name}</option>
-        ))}
+      {/* Favorites / known items picker (action trigger only) */}
+      <select defaultValue="" onChange={handlePick} style={rs.select}>
+        <option value="" disabled>── 從曾用過的品項選（自動帶入）──</option>
+        <optgroup label="⭐ 常用品項">
+          {favorites.map(f => <option key={f.id} value={`fav:${f.id}`}>{f.name}</option>)}
+        </optgroup>
+        <optgroup label="🕘 其他曾用過的品項">
+          {otherKnown.map(k => <option key={k.name} value={`known:${k.name}`}>{k.name}</option>)}
+        </optgroup>
       </select>
 
       {/* Type toggle */}
@@ -143,7 +167,7 @@ function FieldRow({ label, children }) {
 
 // ── QuickCreateModal ──────────────────────────────────────────────────────────
 
-export function QuickCreateModal({ favorites, todayItems, onConfirm, onClose }) {
+export function QuickCreateModal({ favorites, knownItems, todayItems, onConfirm, onClose }) {
   const [step, setStep] = useState('input')   // 'input' | 'preview'
   const [text, setText] = useState('')
   const [rows, setRows] = useState([])
@@ -266,6 +290,7 @@ export function QuickCreateModal({ favorites, todayItems, onConfirm, onClose }) 
                     key={row.id}
                     row={row}
                     favorites={favorites}
+                    knownItems={knownItems}
                     onChange={changes => updateRow(row.id, changes)}
                     onRemove={() => removeRow(row.id)}
                   />

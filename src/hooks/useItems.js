@@ -6,6 +6,7 @@ import {
   runOnceMigration,
   checkAndRotate,
   initDefaults,
+  upsertKnownItem,
 } from '../services/storage'
 import {
   createRegularItem, createDrinkItem,
@@ -36,14 +37,35 @@ export function useItems(selectedDate) {
 
   function addRegular(name, stock, price) {
     persist([...items, createRegularItem(name, stock, price)])
+    upsertKnownItem({ name, type: 'regular', price: Number(price) })
   }
 
   function addDrink(name, stock, comboPrice, aLaCartePrice) {
     persist([...items, createDrinkItem(name, stock, comboPrice, aLaCartePrice)])
+    upsertKnownItem({
+      name, type: 'drink',
+      comboPrice: comboPrice != null ? Number(comboPrice) : null,
+      aLaCartePrice: aLaCartePrice != null ? Number(aLaCartePrice) : null,
+    })
   }
 
   function edit(id, changes) {
     persist(editItem(items, id, changes))
+    if ('price' in changes || 'comboPrice' in changes || 'aLaCartePrice' in changes) {
+      const item = items.find(i => i.id === id)
+      const name = changes.name ?? item?.name
+      if (name) {
+        upsertKnownItem(
+          item?.type === 'drink'
+            ? {
+                name, type: 'drink',
+                comboPrice: 'comboPrice' in changes ? changes.comboPrice : (item?.comboPrice ?? null),
+                aLaCartePrice: 'aLaCartePrice' in changes ? changes.aLaCartePrice : (item?.aLaCartePrice ?? null),
+              }
+            : { name, type: 'regular', price: 'price' in changes ? changes.price : (item?.price ?? 0) }
+        )
+      }
+    }
   }
 
   function remove(id) {
@@ -73,13 +95,14 @@ export function useItems(selectedDate) {
         next = next.filter(i => i.name !== name)
       }
       if (row.type === 'drink') {
-        next.push(createDrinkItem(
-          name, qty,
-          row.comboPrice !== '' ? Number(row.comboPrice) : null,
-          row.showSecondPrice && row.aLaCartePrice !== '' ? Number(row.aLaCartePrice) : null,
-        ))
+        const comboPrice = row.comboPrice !== '' ? Number(row.comboPrice) : null
+        const aLaCartePrice = row.showSecondPrice && row.aLaCartePrice !== '' ? Number(row.aLaCartePrice) : null
+        next.push(createDrinkItem(name, qty, comboPrice, aLaCartePrice))
+        upsertKnownItem({ name, type: 'drink', comboPrice, aLaCartePrice })
       } else {
-        next.push(createRegularItem(name, qty, row.price !== '' ? Number(row.price) : 0))
+        const price = row.price !== '' ? Number(row.price) : 0
+        next.push(createRegularItem(name, qty, price))
+        upsertKnownItem({ name, type: 'regular', price })
       }
     }
     persist(next)

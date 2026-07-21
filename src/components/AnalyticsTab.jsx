@@ -398,6 +398,114 @@ function StockVsSales({ history }) {
   )
 }
 
+// ── Sold-Out Speed ────────────────────────────────────────────
+// dow: optional 0-6 day-of-week filter. Items with no soldOutOrder (still in stock, or
+// the day predates this feature) are simply excluded — old imported history has no crash risk.
+function computeSoldOutRanking(history, dow = null) {
+  const map = {}
+  for (const entry of history) {
+    if (dow != null && parseDate(entry.date).getDay() !== dow) continue
+    for (const item of entry.items) {
+      if (item.soldOutOrder == null) continue
+      if (!map[item.name]) map[item.name] = { name: item.name, type: item.type, orders: [] }
+      map[item.name].orders.push(item.soldOutOrder)
+    }
+  }
+  return Object.values(map)
+    .map(r => ({ ...r, avgOrder: r.orders.reduce((s, v) => s + v, 0) / r.orders.length, count: r.orders.length }))
+    .sort((a, b) => a.avgOrder - b.avgOrder)
+}
+
+function RankGroup({ title, items }) {
+  if (items.length === 0) return null
+  return (
+    <div style={{ marginBottom: '12px' }}>
+      <div style={{ fontSize: '12px', color: '#888', marginBottom: '6px' }}>{title}</div>
+      {items.map((item, i) => (
+        <div key={item.name} style={{
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          padding: '5px 0', borderBottom: i < items.length - 1 ? '1px solid #f5f5f5' : 'none',
+        }}>
+          <span style={{ fontSize: '14px', color: '#333' }}>{item.name}</span>
+          <span style={{ fontSize: '13px', color: '#555' }}>
+            平均第 <b style={{ color: '#c0392b' }}>{item.avgOrder.toFixed(1)}</b> 個賣完（{item.count} 天有記錄）
+          </span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function SoldOutSpeed({ history }) {
+  const todayDow = new Date().getDay()
+  const [activeDow, setActiveDow] = useState(todayDow)
+
+  const overall = computeSoldOutRanking(history)
+  const overallRegular = overall.filter(r => r.type === 'regular').slice(0, 10)
+  const overallDrink = overall.filter(r => r.type === 'drink').slice(0, 10)
+
+  if (overallRegular.length === 0 && overallDrink.length === 0) {
+    return (
+      <Section title="賣完速度排行">
+        <div style={{ textAlign: 'center', padding: '16px 0', color: '#aaa', fontSize: '13px' }}>
+          目前還沒有賣完順序的記錄，累積幾天資料後會顯示在這裡
+        </div>
+      </Section>
+    )
+  }
+
+  const dowRanking = computeSoldOutRanking(history, activeDow).filter(r => r.count >= 2)
+  const dowRegular = dowRanking.filter(r => r.type === 'regular')
+  const dowDrink = dowRanking.filter(r => r.type === 'drink')
+
+  return (
+    <Section title="賣完速度排行">
+      <div style={{ fontSize: '12px', color: '#999', marginBottom: '12px' }}>
+        數字越小代表越快賣完；一般品項與飲料分開排序（互相競爭的品項數量不同，名次不能直接比較）
+      </div>
+
+      <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#555', marginBottom: '8px' }}>整體排行</div>
+      <RankGroup title="一般品項" items={overallRegular} />
+      <RankGroup title="飲料" items={overallDrink} />
+
+      <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#555', margin: '4px 0 8px' }}>依星期幾細分</div>
+      <div style={{ display: 'flex', gap: '5px', marginBottom: '14px', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+        {DOW.map((d, i) => {
+          const isToday = i === todayDow
+          const isActive = i === activeDow
+          return (
+            <button key={i} onClick={() => setActiveDow(i)} style={{
+              flex: '0 0 auto',
+              padding: '5px 10px', fontSize: '13px', borderRadius: '6px',
+              cursor: 'pointer', border: isToday ? '2px solid #c0392b' : '2px solid transparent',
+              background: isActive ? '#c0392b' : '#f0f0f0',
+              color: isActive ? '#fff' : isToday ? '#c0392b' : '#555',
+              fontWeight: isActive || isToday ? 'bold' : 'normal',
+            }}>
+              週{d}
+            </button>
+          )
+        })}
+      </div>
+
+      {dowRegular.length === 0 && dowDrink.length === 0 ? (
+        <div style={{ fontSize: '13px', color: '#bbb', padding: '4px 0 8px' }}>
+          週{DOW[activeDow]}資料還不足（需至少 2 筆）
+        </div>
+      ) : (
+        <>
+          <RankGroup title="一般品項" items={dowRegular} />
+          <RankGroup title="飲料" items={dowDrink} />
+        </>
+      )}
+
+      <div style={{ fontSize: '11px', color: '#bbb', marginTop: '2px' }}>
+        沒賣完的天數不計入平均；括號內為樣本數
+      </div>
+    </Section>
+  )
+}
+
 // ── Stock Suggestion ──────────────────────────────────────────
 function computeStockSuggestions(history) {
   const map = {}
@@ -527,6 +635,7 @@ export default function AnalyticsTab({ onNavigateToDate }) {
         <>
           <RevenueTrend history={history} onNavigateToDate={onNavigateToDate} />
           <ItemRanking history={history} />
+          <SoldOutSpeed history={history} />
           <StockVsSales history={history} />
           <DayOfWeekEffect history={history} />
           <StockSuggestion history={history} />

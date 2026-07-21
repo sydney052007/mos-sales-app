@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { useItems } from '../hooks/useItems'
 import { calcRemaining } from '../logic/itemUtils'
-import { getFavorites, getTodayString } from '../services/storage'
+import { suggestStockForItem } from '../logic/stockSuggestion'
+import { getFavorites, getKnownItems, getDailyHistory, getTodayString } from '../services/storage'
 import { QuickCreateModal } from './QuickCreateModal'
 
 // ── Date helpers ──────────────────────────────────────────────
@@ -19,6 +20,10 @@ function offsetDate(dateStr, delta) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
+function dowOf(dateStr) {
+  return new Date(dateStr + 'T12:00:00').getDay()
+}
+
 // ── Validation helpers ────────────────────────────────────────
 function validName(s) { return s.trim().length > 0 }
 function validNum(s)  { return s !== '' && !isNaN(Number(s)) && Number(s) >= 0 }
@@ -26,13 +31,70 @@ function validNum(s)  { return s !== '' && !isNaN(Number(s)) && Number(s) >= 0 }
 // ── AddItemForm ───────────────────────────────────────────────
 const EMPTY = { type: 'regular', name: '', stock: '', price: '', comboPrice: '', aLaCartePrice: '' }
 
-function AddItemForm({ onAdd, onCancel }) {
+function AddItemForm({ favorites, knownItems, selectedDate, onAdd, onCancel }) {
   const [form, setForm] = useState(EMPTY)
   const [err, setErr] = useState('')
   const [showSecondPrice, setShowSecondPrice] = useState(false)
 
   function set(field, val) { setForm(p => ({ ...p, [field]: val })) }
   function setType(val) { set('type', val); setErr(''); setShowSecondPrice(false) }
+
+  const favNames = new Set(favorites.map(f => f.name))
+  const otherKnown = knownItems.filter(k => !favNames.has(k.name))
+
+  // 選到常用品項一律用常用品項的預設備貨量；選到「其他曾用過的品項」才用星期幾智慧建議。
+  function handlePick(e) {
+    const val = e.target.value
+    e.target.value = ''
+    if (!val) return
+    const sep = val.indexOf(':')
+    const kind = val.slice(0, sep), key = val.slice(sep + 1)
+
+    if (kind === 'fav') {
+      const fav = favorites.find(f => f.id === key)
+      if (!fav) return
+      if (fav.type === 'drink') {
+        setShowSecondPrice(fav.defaultComboPrice != null && fav.defaultALaCartePrice != null)
+        setForm({
+          type: 'drink', name: fav.name,
+          stock: String(fav.defaultStock ?? ''),
+          price: '',
+          comboPrice: fav.defaultComboPrice != null ? String(fav.defaultComboPrice) : '',
+          aLaCartePrice: fav.defaultALaCartePrice != null ? String(fav.defaultALaCartePrice) : '',
+        })
+      } else {
+        setShowSecondPrice(false)
+        setForm({
+          type: 'regular', name: fav.name,
+          stock: String(fav.defaultStock ?? ''),
+          price: fav.defaultPrice != null ? String(fav.defaultPrice) : '',
+          comboPrice: '', aLaCartePrice: '',
+        })
+      }
+    } else if (kind === 'known') {
+      const known = knownItems.find(k => k.name === key)
+      if (!known) return
+      const sug = suggestStockForItem(getDailyHistory(), known.name, dowOf(selectedDate))
+      const stock = sug ? String(sug.suggestion) : ''
+      if (known.type === 'drink') {
+        setShowSecondPrice(known.comboPrice != null && known.aLaCartePrice != null)
+        setForm({
+          type: 'drink', name: known.name, stock,
+          price: '',
+          comboPrice: known.comboPrice != null ? String(known.comboPrice) : '',
+          aLaCartePrice: known.aLaCartePrice != null ? String(known.aLaCartePrice) : '',
+        })
+      } else {
+        setShowSecondPrice(false)
+        setForm({
+          type: 'regular', name: known.name, stock,
+          price: known.price != null ? String(known.price) : '',
+          comboPrice: '', aLaCartePrice: '',
+        })
+      }
+    }
+    setErr('')
+  }
 
   function submit() {
     if (!validName(form.name)) { setErr('品項名稱不能空白'); return }
@@ -53,6 +115,17 @@ function AddItemForm({ onAdd, onCancel }) {
   return (
     <div style={s.formBox}>
       <div style={s.formTitle}>新增品項</div>
+
+      <select defaultValue="" onChange={handlePick} style={s.pickSelect}>
+        <option value="" disabled>── 從曾用過的品項選（自動帶入）──</option>
+        <optgroup label="⭐ 常用品項">
+          {favorites.map(f => <option key={f.id} value={`fav:${f.id}`}>{f.name}</option>)}
+        </optgroup>
+        <optgroup label="🕘 其他曾用過的品項">
+          {otherKnown.map(k => <option key={k.name} value={`known:${k.name}`}>{k.name}</option>)}
+        </optgroup>
+      </select>
+
       <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
         {[['regular', '一般品項'], ['drink', '飲料']].map(([val, label]) => (
           <button
@@ -507,12 +580,21 @@ export default function ItemsTab({ selectedDate, onDateChange }) {
         </button>
 
         {/* Add form */}
-        {showAdd && <AddItemForm onAdd={handleAdd} onCancel={() => setShowAdd(false)} />}
+        {showAdd && (
+          <AddItemForm
+            favorites={getFavorites()}
+            knownItems={getKnownItems()}
+            selectedDate={selectedDate}
+            onAdd={handleAdd}
+            onCancel={() => setShowAdd(false)}
+          />
+        )}
 
         {/* Quick-create modal */}
         {showQuickCreate && (
           <QuickCreateModal
             favorites={getFavorites()}
+            knownItems={getKnownItems()}
             todayItems={ctrl.items}
             onConfirm={(rows, conflictMode) => ctrl.bulkApplyParsed(rows, conflictMode)}
             onClose={() => setShowQuickCreate(false)}
@@ -582,6 +664,11 @@ const s = {
     borderRadius: '12px', padding: '16px', marginBottom: '14px',
   },
   formTitle: { fontSize: '16px', fontWeight: 'bold', marginBottom: '14px', color: '#1a1a1a' },
+  pickSelect: {
+    width: '100%', padding: '8px 9px', fontSize: '13px',
+    border: '1px solid #ccc', borderRadius: '7px',
+    background: '#fff', marginBottom: '12px', boxSizing: 'border-box',
+  },
   inp: {
     padding: '8px 10px', fontSize: '15px', border: '1px solid #ccc',
     borderRadius: '7px', flex: 1, minWidth: 0, boxSizing: 'border-box',
