@@ -167,7 +167,7 @@ function FieldRow({ label, children }) {
 
 // ── QuickCreateModal ──────────────────────────────────────────────────────────
 
-export function QuickCreateModal({ favorites, knownItems, todayItems, onConfirm, onClose }) {
+export function QuickCreateModal({ favorites, knownItems, matchCandidates, todayItems, onConfirm, onClose }) {
   const [step, setStep] = useState('input')   // 'input' | 'preview'
   const [text, setText] = useState('')
   const [rows, setRows] = useState([])
@@ -177,7 +177,7 @@ export function QuickCreateModal({ favorites, knownItems, todayItems, onConfirm,
   // ── Parse ──
   function handleParse() {
     if (!text.trim()) { setError('請先貼上備貨筆記'); return }
-    const parsed = parseText(text, favorites)
+    const parsed = parseText(text, matchCandidates)
     if (!parsed.length) { setError('找不到任何可解析的品項，請確認文字格式'); return }
     setRows(parsed)
     setStep('preview')

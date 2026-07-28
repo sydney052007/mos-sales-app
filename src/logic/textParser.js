@@ -5,7 +5,7 @@
 
 function normalize(s) {
   return s
-    .replace(/[\s\(\)（）]/g, '')
+    .replace(/[\s\(\)（）\-－_]/g, '')
     .replace(/蕃/g, '番')   // variant character
     .replace(/台/g, '臺')
     .toLowerCase()

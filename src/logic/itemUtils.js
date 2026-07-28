@@ -72,6 +72,14 @@ export function adjustSold(items, id, field, delta) {
 
 // --- Derived values ---
 
+export function calcItemRevenue(item) {
+  if (item.type === 'drink') {
+    return ((item.comboPrice ?? 0) * (item.comboSold ?? 0)) +
+           ((item.aLaCartePrice ?? 0) * (item.aLaCarteSold ?? 0))
+  }
+  return (item.price ?? 0) * (item.sold ?? 0)
+}
+
 export function calcRemaining(item) {
   if (item.type === 'drink') {
     return item.stock - ((item.comboSold ?? 0) + (item.aLaCarteSold ?? 0))

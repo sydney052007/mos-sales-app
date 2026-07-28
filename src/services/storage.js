@@ -1,3 +1,5 @@
+import { calcItemRevenue } from '../logic/itemUtils'
+
 const KEYS = {
   TODAY: 'mos_today',         // "current working" items (concept: active day, not literally "today")
   FAVORITES: 'mos_favorites',
@@ -43,14 +45,6 @@ export function setTodayItems(items) {
 }
 
 // --- Daily history (permanent; append-only) ---
-
-function calcItemRevenue(item) {
-  if (item.type === 'drink') {
-    return ((item.comboPrice ?? 0) * (item.comboSold ?? 0)) +
-           ((item.aLaCartePrice ?? 0) * (item.aLaCarteSold ?? 0))
-  }
-  return (item.price ?? 0) * (item.sold ?? 0)
-}
 
 function calcItemRemaining(item) {
   if (item.type === 'drink') {

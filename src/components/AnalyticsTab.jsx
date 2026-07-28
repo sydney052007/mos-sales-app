@@ -112,12 +112,22 @@ function BarChart({ bars, barWidth = 40, chartH = 120, color = '#c0392b', onBarC
 
 // ── Section wrapper ───────────────────────────────────────────
 function Section({ title, children }) {
+  const [open, setOpen] = useState(true)  // 預設展開
   return (
     <div style={{ background: '#fff', borderRadius: '12px', padding: '14px 16px', marginBottom: '12px' }}>
-      <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#1a1a1a', marginBottom: '12px' }}>
-        {title}
+      <div
+        onClick={() => setOpen(v => !v)}
+        style={{
+          fontSize: '15px', fontWeight: 'bold', color: '#1a1a1a',
+          marginBottom: open ? '12px' : 0,
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          cursor: 'pointer', userSelect: 'none',
+        }}
+      >
+        <span>{title}</span>
+        <span style={{ fontSize: '13px', color: '#999' }}>{open ? '▲' : '▼'}</span>
       </div>
-      {children}
+      {open && children}
     </div>
   )
 }
@@ -344,7 +354,6 @@ function StockVsSales({ history }) {
   const withStock = [...items.filter(i => i.stockKnownCount > 0)].sort(
     (a, b) => (b.soldOutCount / b.stockKnownCount) - (a.soldOutCount / a.stockKnownCount)
   )
-  const noStock = items.filter(i => i.stockKnownCount === 0)
 
   return (
     <Section title="備貨 vs 實際銷售">
@@ -380,20 +389,6 @@ function StockVsSales({ history }) {
           </div>
         )
       })}
-      {noStock.map(item => (
-        <div key={item.name} style={{ borderBottom: '1px solid #f5f5f5', paddingBottom: '8px', marginBottom: '8px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '14px', color: '#999' }}>{item.name}</span>
-            <span style={{
-              fontSize: '11px', color: '#bbb', background: '#f5f5f5',
-              padding: '2px 6px', borderRadius: '4px',
-            }}>無備貨資料</span>
-          </div>
-          <div style={{ fontSize: '12px', color: '#bbb', marginTop: '3px' }}>
-            共 {item.appearances} 天記錄
-          </div>
-        </div>
-      ))}
     </Section>
   )
 }

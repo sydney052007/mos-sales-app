@@ -1,9 +1,27 @@
 import { useState, useEffect, useRef } from 'react'
 import { useItems } from '../hooks/useItems'
-import { calcRemaining } from '../logic/itemUtils'
+import { calcRemaining, calcItemRevenue } from '../logic/itemUtils'
 import { suggestStockForItem } from '../logic/stockSuggestion'
 import { getFavorites, getKnownItems, getDailyHistory, getTodayString } from '../services/storage'
 import { QuickCreateModal } from './QuickCreateModal'
+
+// Merges favorites + known items into one candidate list for text-parser fuzzy matching,
+// normalizing known-item price fields (price/comboPrice/aLaCartePrice) into the
+// favorites-style default* field names so downstream prefill logic works uniformly.
+function buildMatchCandidates(favorites, knownItems) {
+  const favNames = new Set(favorites.map(f => f.name))
+  const knownAsFavorites = knownItems
+    .filter(k => !favNames.has(k.name))
+    .map(k => ({
+      id: `known:${k.name}`,
+      type: k.type,
+      name: k.name,
+      defaultPrice: k.price ?? null,
+      defaultComboPrice: k.comboPrice ?? null,
+      defaultALaCartePrice: k.aLaCartePrice ?? null,
+    }))
+  return [...favorites, ...knownAsFavorites]
+}
 
 // ── Date helpers ──────────────────────────────────────────────
 const DOW = ['日', '一', '二', '三', '四', '五', '六']
@@ -209,7 +227,7 @@ function FormRow({ label, children }) {
 }
 
 // ── EditForm ──────────────────────────────────────────────────
-function EditForm({ item, onSave, onCancel }) {
+function EditForm({ item, favorites, knownItems, onSave, onCancel }) {
   const isDrink = item.type === 'drink'
   const hasDualPrice = isDrink && item.comboPrice != null && item.aLaCartePrice != null
   const [showSecondPrice, setShowSecondPrice] = useState(hasDualPrice)
@@ -222,7 +240,51 @@ function EditForm({ item, onSave, onCancel }) {
   })
   const [err, setErr] = useState('')
 
+  // Only candidates of the same type — EditForm doesn't support switching type via picker.
+  const typeFavorites = favorites.filter(f => f.type === item.type)
+  const favNames = new Set(typeFavorites.map(f => f.name))
+  const typeKnown = knownItems.filter(k => k.type === item.type && !favNames.has(k.name))
+
   function set(field, val) { setForm(p => ({ ...p, [field]: val })); setErr('') }
+
+  // Picking a candidate only overwrites name/price fields — stock and sold counts
+  // stay untouched since EditForm is also used to fix typos on items already in progress.
+  function handlePick(e) {
+    const val = e.target.value
+    e.target.value = ''
+    if (!val) return
+    const sep = val.indexOf(':')
+    const kind = val.slice(0, sep), key = val.slice(sep + 1)
+
+    if (kind === 'fav') {
+      const fav = typeFavorites.find(f => f.id === key)
+      if (!fav) return
+      if (isDrink) {
+        setShowSecondPrice(fav.defaultComboPrice != null && fav.defaultALaCartePrice != null)
+        setForm(p => ({
+          ...p, name: fav.name,
+          comboPrice: fav.defaultComboPrice != null ? String(fav.defaultComboPrice) : '',
+          aLaCartePrice: fav.defaultALaCartePrice != null ? String(fav.defaultALaCartePrice) : '',
+        }))
+      } else {
+        setForm(p => ({ ...p, name: fav.name, price: fav.defaultPrice != null ? String(fav.defaultPrice) : '' }))
+      }
+    } else if (kind === 'known') {
+      const known = typeKnown.find(k => k.name === key)
+      if (!known) return
+      if (isDrink) {
+        setShowSecondPrice(known.comboPrice != null && known.aLaCartePrice != null)
+        setForm(p => ({
+          ...p, name: known.name,
+          comboPrice: known.comboPrice != null ? String(known.comboPrice) : '',
+          aLaCartePrice: known.aLaCartePrice != null ? String(known.aLaCartePrice) : '',
+        }))
+      } else {
+        setForm(p => ({ ...p, name: known.name, price: known.price != null ? String(known.price) : '' }))
+      }
+    }
+    setErr('')
+  }
 
   function save() {
     if (!validName(form.name))  { setErr('名稱不能空白'); return }
@@ -247,6 +309,15 @@ function EditForm({ item, onSave, onCancel }) {
 
   return (
     <div>
+      <select defaultValue="" onChange={handlePick} style={s.pickSelect}>
+        <option value="" disabled>── 從曾用過的品項選（帶入名稱／價格）──</option>
+        <optgroup label="⭐ 常用品項">
+          {typeFavorites.map(f => <option key={f.id} value={`fav:${f.id}`}>{f.name}</option>)}
+        </optgroup>
+        <optgroup label="🕘 其他曾用過的品項">
+          {typeKnown.map(k => <option key={k.name} value={`known:${k.name}`}>{k.name}</option>)}
+        </optgroup>
+      </select>
       <EditRow label="名稱">
         <input style={s.editInp} value={form.name}
           onChange={e => set('name', e.target.value)} onKeyDown={handleKey} autoFocus />
@@ -318,7 +389,7 @@ function Field({ label, value }) {
 }
 
 // ── RegularRow ────────────────────────────────────────────────
-function RegularRow({ item, ctrl }) {
+function RegularRow({ item, ctrl, favorites, knownItems }) {
   const [expanded, setExpanded] = useState(false)
   const [editing, setEditing] = useState(false)
   const rem = calcRemaining(item)
@@ -365,6 +436,8 @@ function RegularRow({ item, ctrl }) {
           ) : (
             <EditForm
               item={item}
+              favorites={favorites}
+              knownItems={knownItems}
               onSave={changes => { ctrl.edit(item.id, changes); setEditing(false); setExpanded(false) }}
               onCancel={() => setEditing(false)}
             />
@@ -376,7 +449,7 @@ function RegularRow({ item, ctrl }) {
 }
 
 // ── DrinkRow ──────────────────────────────────────────────────
-function DrinkRow({ item, ctrl }) {
+function DrinkRow({ item, ctrl, favorites, knownItems }) {
   const [expanded, setExpanded] = useState(false)
   const [editing, setEditing] = useState(false)
   const rem = calcRemaining(item)
@@ -457,6 +530,8 @@ function DrinkRow({ item, ctrl }) {
           ) : (
             <EditForm
               item={item}
+              favorites={favorites}
+              knownItems={knownItems}
               onSave={changes => { ctrl.edit(item.id, changes); setEditing(false); setExpanded(false) }}
               onCancel={() => setEditing(false)}
             />
@@ -530,12 +605,18 @@ export default function ItemsTab({ selectedDate, onDateChange }) {
     setShowAdd(false)
   }
 
+  const favorites = getFavorites()
+  const knownItems = getKnownItems()
+  const matchCandidates = buildMatchCandidates(favorites, knownItems)
+
   const sorted = [...ctrl.items].sort((a, b) => {
     const rA = calcRemaining(a), rB = calcRemaining(b)
     if (rA === 0 && rB !== 0) return 1
     if (rA !== 0 && rB === 0) return -1
     return 0
   })
+
+  const totalRevenue = ctrl.items.reduce((sum, item) => sum + calcItemRevenue(item), 0)
 
   return (
     <div>
@@ -582,8 +663,8 @@ export default function ItemsTab({ selectedDate, onDateChange }) {
         {/* Add form */}
         {showAdd && (
           <AddItemForm
-            favorites={getFavorites()}
-            knownItems={getKnownItems()}
+            favorites={favorites}
+            knownItems={knownItems}
             selectedDate={selectedDate}
             onAdd={handleAdd}
             onCancel={() => setShowAdd(false)}
@@ -593,8 +674,9 @@ export default function ItemsTab({ selectedDate, onDateChange }) {
         {/* Quick-create modal */}
         {showQuickCreate && (
           <QuickCreateModal
-            favorites={getFavorites()}
-            knownItems={getKnownItems()}
+            favorites={favorites}
+            knownItems={knownItems}
+            matchCandidates={matchCandidates}
             todayItems={ctrl.items}
             onConfirm={(rows, conflictMode) => ctrl.bulkApplyParsed(rows, conflictMode)}
             onClose={() => setShowQuickCreate(false)}
@@ -620,10 +702,17 @@ export default function ItemsTab({ selectedDate, onDateChange }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
           {sorted.map(item =>
             item.type === 'drink'
-              ? <DrinkRow key={item.id} item={item} ctrl={ctrl} />
-              : <RegularRow key={item.id} item={item} ctrl={ctrl} />
+              ? <DrinkRow key={item.id} item={item} ctrl={ctrl} favorites={favorites} knownItems={knownItems} />
+              : <RegularRow key={item.id} item={item} ctrl={ctrl} favorites={favorites} knownItems={knownItems} />
           )}
         </div>
+
+        {/* Total revenue */}
+        {ctrl.items.length > 0 && (
+          <div style={s.totalRevenue}>
+            目前已售出總金額：<span style={s.totalRevenueValue}>${totalRevenue.toLocaleString()}</span>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -757,5 +846,12 @@ const s = {
   cancelBtn: {
     padding: '9px 16px', fontSize: '14px', background: '#fff', color: '#666',
     border: '1px solid #ccc', borderRadius: '7px', cursor: 'pointer',
+  },
+  totalRevenue: {
+    marginTop: '14px', padding: '12px 14px', fontSize: '14px', color: '#555',
+    background: '#fff', border: '1px solid #e0e0e0', borderRadius: '10px', textAlign: 'right',
+  },
+  totalRevenueValue: {
+    fontSize: '18px', fontWeight: 'bold', color: '#c0392b',
   },
 }
